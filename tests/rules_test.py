@@ -16,7 +16,7 @@ from elastalert.ruletypes import (
     SpikeRule,
     WhitelistRule,
 )
-from elastalert.ruletypes.base_aggregation_rule import BaseAggregationRule
+from elastalert.ruletypes.test_base_aggregation_rule import TestBaseAggregationRule
 from elastalert.utils import EventWindow
 from elastalert.utils.time import dt_to_ts, ts_to_dt
 from elastalert.utils.util import EAException, ts_now
@@ -640,7 +640,9 @@ def test_new_term():
         }
     }
 
-    with mock.patch("elastalert.utils.util.elasticsearch_client") as mock_es:
+    with mock.patch(
+        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
+    ) as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
@@ -696,7 +698,9 @@ def test_new_term():
 
     # Missing_field
     rules["alert_on_missing_field"] = True
-    with mock.patch("elastalert.utils.util.elasticsearch_client") as mock_es:
+    with mock.patch(
+        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
+    ) as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
@@ -729,7 +733,9 @@ def test_new_term_nested_field():
             }
         }
     }
-    with mock.patch("elastalert.utils.util.elasticsearch_client") as mock_es:
+    with mock.patch(
+        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
+    ) as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
@@ -770,7 +776,9 @@ def test_new_term_with_terms():
         }
     }
 
-    with mock.patch("elastalert.utils.util.elasticsearch_client") as mock_es:
+    with mock.patch(
+        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
+    ) as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
@@ -840,7 +848,9 @@ def test_new_term_with_composite_fields():
         }
     }
 
-    with mock.patch("elastalert.utils.util.elasticsearch_client") as mock_es:
+    with mock.patch(
+        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
+    ) as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
@@ -887,7 +897,9 @@ def test_new_term_with_composite_fields():
 
     # Missing_fields
     rules["alert_on_missing_field"] = True
-    with mock.patch("elastalert.utils.util.elasticsearch_client") as mock_es:
+    with mock.patch(
+        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
+    ) as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
@@ -1221,44 +1233,44 @@ def test_base_aggregation_constructor():
 
     # Test time period constructor logic
     rules["bucket_interval"] = {"seconds": 10}
-    rule = BaseAggregationRule(rules)
+    rule = TestBaseAggregationRule(rules)
     assert rule.rules["bucket_interval_period"] == "10s"
 
     rules["bucket_interval"] = {"minutes": 5}
-    rule = BaseAggregationRule(rules)
+    rule = TestBaseAggregationRule(rules)
     assert rule.rules["bucket_interval_period"] == "5m"
 
     rules["bucket_interval"] = {"hours": 4}
-    rule = BaseAggregationRule(rules)
+    rule = TestBaseAggregationRule(rules)
     assert rule.rules["bucket_interval_period"] == "4h"
 
     rules["bucket_interval"] = {"days": 2}
-    rule = BaseAggregationRule(rules)
+    rule = TestBaseAggregationRule(rules)
     assert rule.rules["bucket_interval_period"] == "2d"
 
     rules["bucket_interval"] = {"weeks": 1}
-    rule = BaseAggregationRule(rules)
+    rule = TestBaseAggregationRule(rules)
     assert rule.rules["bucket_interval_period"] == "1w"
 
     # buffer_time evenly divisible by bucket_interval
     with pytest.raises(EAException):
         rules["bucket_interval_timedelta"] = datetime.timedelta(seconds=13)
-        rule = BaseAggregationRule(rules)
+        rule = TestBaseAggregationRule(rules)
 
     # run_every evenly divisible by bucket_interval
     rules["use_run_every_query_size"] = True
     rules["run_every"] = datetime.timedelta(minutes=2)
     rules["bucket_interval_timedelta"] = datetime.timedelta(seconds=10)
-    rule = BaseAggregationRule(rules)
+    rule = TestBaseAggregationRule(rules)
 
     with pytest.raises(EAException):
         rules["bucket_interval_timedelta"] = datetime.timedelta(seconds=13)
-        rule = BaseAggregationRule(rules)
+        rule = TestBaseAggregationRule(rules)
 
 
 def test_base_aggregation_payloads():
     with mock.patch.object(
-        BaseAggregationRule, "check_matches", return_value=None
+        TestBaseAggregationRule, "check_matches", return_value=None
     ) as mock_check_matches:
         rules = {
             "bucket_interval": {"seconds": 10},
@@ -1271,7 +1283,7 @@ def test_base_aggregation_payloads():
         interval_agg = create_bucket_aggregation(
             "interval_aggs", [{"key_as_string": "2014-01-01T00:00:00Z"}]
         )
-        rule = BaseAggregationRule(rules)
+        rule = TestBaseAggregationRule(rules)
 
         # Payload not wrapped
         rule.add_aggregation_data({timestamp: {}})
