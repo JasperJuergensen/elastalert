@@ -1,0 +1,68 @@
+{
+  "errors": [],
+  "generated_at": "2020-04-01T16:18:56Z",
+  "metrics": {
+    "_totals": {
+      "CONFIDENCE.HIGH": 0.0,
+      "CONFIDENCE.LOW": 0.0,
+      "CONFIDENCE.MEDIUM": 1.0,
+      "CONFIDENCE.UNDEFINED": 0.0,
+      "SEVERITY.HIGH": 0.0,
+      "SEVERITY.LOW": 1.0,
+      "SEVERITY.MEDIUM": 0.0,
+      "SEVERITY.UNDEFINED": 0.0,
+      "loc": 104,
+      "nosec": 0
+    },
+    "elastalert/alerter/zabbix_alerter.py": {
+      "CONFIDENCE.HIGH": 0.0,
+      "CONFIDENCE.LOW": 0.0,
+      "CONFIDENCE.MEDIUM": 1.0,
+      "CONFIDENCE.UNDEFINED": 0.0,
+      "SEVERITY.HIGH": 0.0,
+      "SEVERITY.LOW": 1.0,
+      "SEVERITY.MEDIUM": 0.0,
+      "SEVERITY.UNDEFINED": 0.0,
+      "loc": 104,
+      "nosec": 0
+    }
+  },
+  "results": [
+    {
+      "code": "11 class ZabbixClient(ZabbixAPI):\n12     def __init__(\n13         self,\n14         url=\"http://localhost\",\n15         use_authenticate=False,\n16         user=\"Admin\",\n17         password=\"zabbix\",\n18         sender_host=\"localhost\",\n19         sender_port=10051,\n20     ):\n21         self.url = url\n22         self.use_authenticate = use_authenticate\n23         self.sender_host = sender_host\n24         self.sender_port = sender_port\n25         self.metrics_chunk_size = 200\n26         self.aggregated_metrics = []\n27 \n28         super(ZabbixClient, self).__init__(\n29             url=self.url,\n30             use_authenticate=self.use_authenticate,\n31             user=user,\n32             password=password,\n33         )\n34 \n35     def send_metric(self, hostname, key, data):\n",
+      "filename": "elastalert/alerter/zabbix_alerter.py",
+      "issue_confidence": "MEDIUM",
+      "issue_severity": "LOW",
+      "issue_text": "Possible hardcoded password: 'zabbix'",
+      "line_number": 12,
+      "line_range": [
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/latest/plugins/b107_hardcoded_password_default.html",
+      "test_id": "B107",
+      "test_name": "hardcoded_password_default"
+    }
+  ]
+}
