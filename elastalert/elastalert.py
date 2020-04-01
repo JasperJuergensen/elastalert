@@ -171,7 +171,6 @@ class ElastAlerter(object):
             )
 
         if not self.args.es_debug:
-            # TODO
             logging.getLogger("elasticsearch").setLevel(logging.WARNING)
 
         if self.args.es_debug_trace:
@@ -518,7 +517,7 @@ class ElastAlerter(object):
                     # Different versions of ES have this formatted in different ways. Fallback to str-ing the whole thing
                     raise ElasticsearchException(str(res["_shards"]["failures"]))
 
-            logging.debug(str(res))
+            log.debug(str(res))
         except ElasticsearchException as e:
             # Elasticsearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
@@ -1046,7 +1045,7 @@ class ElastAlerter(object):
             filters.append(query_str_filter)
         else:
             filters.append({"query": query_str_filter})
-        logging.debug(
+        log.debug(
             "Enhanced filter with {} terms: {}".format(listname, str(query_str_filter))
         )
 
@@ -1079,7 +1078,7 @@ class ElastAlerter(object):
 
         # Don't run if starttime was set to the future
         if ts_now() <= rule["starttime"]:
-            logging.warning(
+            log.warning(
                 "Attempted to use query start time in the future (%s), sleeping instead"
                 % (starttime)
             )
@@ -1320,7 +1319,7 @@ class ElastAlerter(object):
                         rule_file, self.conf
                     )
                     if not new_rule:
-                        logging.error("Invalid rule file skipped: %s" % rule_file)
+                        log.error("Invalid rule file skipped: %s" % rule_file)
                         continue
                     if "is_enabled" in new_rule and not new_rule["is_enabled"]:
                         log.info("Rule file %s is now disabled." % (rule_file))
@@ -1368,7 +1367,7 @@ class ElastAlerter(object):
                         rule_file, self.conf
                     )
                     if not new_rule:
-                        logging.error("Invalid rule file skipped: %s" % rule_file)
+                        log.error("Invalid rule file skipped: %s" % rule_file)
                         continue
                     if "is_enabled" in new_rule and not new_rule["is_enabled"]:
                         continue
@@ -1465,12 +1464,12 @@ class ElastAlerter(object):
             time.sleep(1.0)
 
         if self.writeback_es.ping():
-            logging.error(
+            log.error(
                 'Writeback alias "%s" does not exist, did you run `elastalert-create-index`?',
                 self.writeback_alias,
             )
         else:
-            logging.error(
+            log.error(
                 'Could not reach ElasticSearch at "%s:%d".',
                 self.conf["es_host"],
                 self.conf["es_port"],
@@ -1565,7 +1564,7 @@ class ElastAlerter(object):
                 # We were processing for longer than our refresh interval
                 # This can happen if --start was specified with a large time period
                 # or if we are running too slow to process events in real time.
-                logging.warning(
+                log.warning(
                     "Querying from %s to %s took longer than %s!"
                     % (
                         old_starttime,
@@ -1946,7 +1945,7 @@ class ElastAlerter(object):
                 res = self.writeback_es.index(index=index, doc_type=doc_type, body=body)
             return res
         except ElasticsearchException as e:
-            logging.exception("Error writing alert info to Elasticsearch: %s" % (e))
+            log.exception("Error writing alert info to Elasticsearch: %s" % (e))
 
     def find_recent_pending_alerts(self, time_limit):
         """ Queries writeback_es to find alerts that did not send
@@ -1988,7 +1987,7 @@ class ElastAlerter(object):
             if res["hits"]["hits"]:
                 return res["hits"]["hits"]
         except ElasticsearchException as e:
-            logging.exception("Error finding recent pending alerts: %s %s" % (e, query))
+            log.exception("Error finding recent pending alerts: %s %s" % (e, query))
         return []
 
     def send_pending_alerts(self):
@@ -2241,11 +2240,11 @@ class ElastAlerter(object):
     def silence(self, silence_cache_key=None):
         """ Silence an alert for a period of time. --silence and --rule must be passed as args. """
         if self.debug:
-            logging.error("--silence not compatible with --debug")
+            log.error("--silence not compatible with --debug")
             exit(1)
 
         if not self.args.rule:
-            logging.error("--silence must be used with --rule")
+            log.error("--silence must be used with --rule")
             exit(1)
 
         # With --rule, self.rules will only contain that specific rule
@@ -2255,11 +2254,11 @@ class ElastAlerter(object):
         try:
             silence_ts = parse_deadline(self.args.silence)
         except (ValueError, TypeError):
-            logging.error("%s is not a valid time period" % (self.args.silence))
+            log.error("%s is not a valid time period" % (self.args.silence))
             exit(1)
 
         if not self.set_realert(silence_cache_key, silence_ts, 0):
-            logging.error("Failed to save silence command to Elasticsearch")
+            log.error("Failed to save silence command to Elasticsearch")
             exit(1)
 
         log.info(
@@ -2345,7 +2344,7 @@ class ElastAlerter(object):
 
     def handle_error(self, message, data=None):
         """ Logs message at error level and writes message, data and traceback to Elasticsearch. """
-        logging.error(message)
+        log.error(message)
         body = {"message": message}
         tb = traceback.format_exc()
         body["traceback"] = tb.strip().split("\n")
@@ -2355,7 +2354,7 @@ class ElastAlerter(object):
 
     def handle_uncaught_exception(self, exception, rule):
         """ Disables a rule and sends a notification. """
-        logging.error(traceback.format_exc())
+        log.error(traceback.format_exc())
         self.handle_error(
             "Uncaught exception running rule %s: %s" % (rule["name"], exception),
             {"rule": rule["name"]},
