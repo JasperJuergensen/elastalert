@@ -12,6 +12,7 @@ repos:
     rev: 4.3.21-2
     hooks:
     -   id: isort
+        args: ["-m 3", "--trailing-comma", "-w 88"]
         exclude: elastalert/ruletypes/__init__.py
 -   repo: https://github.com/psf/black
     rev: stable
