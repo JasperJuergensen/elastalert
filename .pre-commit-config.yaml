@@ -1,6 +1,6 @@
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    sha: v2.5.0
+    rev: v2.5.0
     hooks:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
@@ -12,6 +12,7 @@ repos:
     rev: 4.3.21-2
     hooks:
     -   id: isort
+        exclude: elastalert/ruletypes/__init__.py
 -   repo: https://github.com/psf/black
     rev: stable
     hooks:
