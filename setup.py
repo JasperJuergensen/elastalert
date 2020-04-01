@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 
 from setuptools import find_packages, setup
@@ -11,7 +10,7 @@ setup(
     author="Quentin Long",
     author_email="qlo@yelp.com",
     setup_requires="setuptools",
-    license="Copyright 2014 Yelp",
+    license="License :: OSI Approved :: Apache Software License",
     classifiers=[
         "Programming Language :: Python :: 3.6",
         "License :: OSI Approved :: Apache Software License",
@@ -44,7 +43,7 @@ setup(
         "PyStaticConfiguration>=0.10.3",
         "python-dateutil>=2.6.0,<2.7.0",
         "PyYAML>=3.12",
-        "requests>=2.10.0",
+        "requests>=2.22.0",
         "stomp.py>=4.1.17",
         "texttable>=0.8.8",
         "twilio>=6.0.0,<6.1",
