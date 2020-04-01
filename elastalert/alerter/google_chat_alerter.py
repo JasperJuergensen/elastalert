@@ -2,28 +2,32 @@ import json
 import logging
 
 import requests
-from requests import RequestException
-
 from elastalert.alerter import Alerter
 from elastalert.exceptions import EAException
+from requests import RequestException
 
 log = logging.getLogger(__name__)
 
 
 class GoogleChatAlerter(Alerter):
     """ Send a notification via Google Chat webhooks """
-    required_options = frozenset(['googlechat_webhook_url'])
+
+    required_options = frozenset(["googlechat_webhook_url"])
 
     def __init__(self, rule):
         super(GoogleChatAlerter, self).__init__(rule)
-        self.googlechat_webhook_url = self.rule['googlechat_webhook_url']
+        self.googlechat_webhook_url = self.rule["googlechat_webhook_url"]
         if isinstance(self.googlechat_webhook_url, str):
             self.googlechat_webhook_url = [self.googlechat_webhook_url]
-        self.googlechat_format = self.rule.get('googlechat_format', 'basic')
-        self.googlechat_header_title = self.rule.get('googlechat_header_title', None)
-        self.googlechat_header_subtitle = self.rule.get('googlechat_header_subtitle', None)
-        self.googlechat_header_image = self.rule.get('googlechat_header_image', None)
-        self.googlechat_footer_kibanalink = self.rule.get('googlechat_footer_kibanalink', None)
+        self.googlechat_format = self.rule.get("googlechat_format", "basic")
+        self.googlechat_header_title = self.rule.get("googlechat_header_title", None)
+        self.googlechat_header_subtitle = self.rule.get(
+            "googlechat_header_subtitle", None
+        )
+        self.googlechat_header_image = self.rule.get("googlechat_header_image", None)
+        self.googlechat_footer_kibanalink = self.rule.get(
+            "googlechat_footer_kibanalink", None
+        )
 
     def create_header(self):
         header = None
@@ -31,61 +35,76 @@ class GoogleChatAlerter(Alerter):
             header = {
                 "title": self.googlechat_header_title,
                 "subtitle": self.googlechat_header_subtitle,
-                "imageUrl": self.googlechat_header_image
+                "imageUrl": self.googlechat_header_image,
             }
         return header
 
     def create_footer(self):
         footer = None
         if self.googlechat_footer_kibanalink:
-            footer = {"widgets": [{
-                "buttons": [{
-                    "textButton": {
-                        "text": "VISIT KIBANA",
-                        "onClick": {
-                            "openLink": {
-                                "url": self.googlechat_footer_kibanalink
+            footer = {
+                "widgets": [
+                    {
+                        "buttons": [
+                            {
+                                "textButton": {
+                                    "text": "VISIT KIBANA",
+                                    "onClick": {
+                                        "openLink": {
+                                            "url": self.googlechat_footer_kibanalink
+                                        }
+                                    },
+                                }
                             }
-                        }
+                        ]
                     }
-                }]
-            }]
+                ]
             }
         return footer
 
     def create_card(self, matches):
-        card = {"cards": [{
-            "sections": [{
-                "widgets": [
-                    {"textParagraph": {"text": self.create_alert_body(matches)}}
-                ]}
-            ]}
-        ]}
+        card = {
+            "cards": [
+                {
+                    "sections": [
+                        {
+                            "widgets": [
+                                {
+                                    "textParagraph": {
+                                        "text": self.create_alert_body(matches)
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
 
         # Add the optional header
         header = self.create_header()
         if header:
-            card['cards'][0]['header'] = header
+            card["cards"][0]["header"] = header
 
         # Add the optional footer
         footer = self.create_footer()
         if footer:
-            card['cards'][0]['sections'].append(footer)
+            card["cards"][0]["sections"].append(footer)
         return card
 
     def create_basic(self, matches):
         body = self.create_alert_body(matches)
-        return {'text': body}
+        return {"text": body}
 
     def alert(self, matches):
         # Format message
-        if self.googlechat_format == 'card':
+        if self.googlechat_format == "card":
             message = self.create_card(matches)
         else:
             message = self.create_basic(matches)
 
         # Post to webhook
-        headers = {'content-type': 'application/json'}
+        headers = {"content-type": "application/json"}
         for url in self.googlechat_webhook_url:
             try:
                 response = requests.post(url, data=json.dumps(message), headers=headers)
@@ -95,5 +114,7 @@ class GoogleChatAlerter(Alerter):
         log.info("Alert sent to Google Chat!")
 
     def get_info(self):
-        return {'type': 'googlechat',
-                'googlechat_webhook_url': self.googlechat_webhook_url}
+        return {
+            "type": "googlechat",
+            "googlechat_webhook_url": self.googlechat_webhook_url,
+        }

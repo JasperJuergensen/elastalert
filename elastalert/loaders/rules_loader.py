@@ -1,19 +1,26 @@
 import copy
+import datetime
 import logging
 import os
-import datetime
 import sys
 from abc import ABCMeta, abstractmethod
 
 import jsonschema
 import yaml
-
-from elastalert import enhancements, alerter, ruletypes
-from elastalert.exceptions import EAException
+from elastalert import alerter, enhancements, ruletypes
 from elastalert.alerter.opsgenie_alerter import OpsGenieAlerter
+from elastalert.exceptions import EAException
+from elastalert.utils.time import (
+    dt_to_ts,
+    dt_to_ts_with_format,
+    dt_to_unix,
+    dt_to_unixms,
+    ts_to_dt,
+    ts_to_dt_with_format,
+    unix_to_dt,
+    unixms_to_dt,
+)
 from elastalert.utils.util import get_module
-from elastalert.utils.time import ts_to_dt, dt_to_ts, unix_to_dt, dt_to_unix, unixms_to_dt, dt_to_unixms, \
-    ts_to_dt_with_format, dt_to_ts_with_format
 
 log = logging.getLogger(__name__)
 
@@ -26,63 +33,64 @@ class RulesLoader(metaclass=ABCMeta):
     required_globals = frozenset([])
 
     # Required local (rule.yaml) configuration options
-    required_locals = frozenset(['alert', 'type', 'name', 'index'])
+    required_locals = frozenset(["alert", "type", "name", "index"])
 
     # Used to map the names of rules to their classes
     rules_mapping = {
-        'frequency': ruletypes.FrequencyRule,
-        'any': ruletypes.AnyRule,
-        'spike': ruletypes.SpikeRule,
-        'blacklist': ruletypes.BlacklistRule,
-        'whitelist': ruletypes.WhitelistRule,
-        'change': ruletypes.ChangeRule,
-        'flatline': ruletypes.FlatlineRule,
-        'new_term': ruletypes.NewTermsRule,
-        'cardinality': ruletypes.CardinalityRule,
-        'metric_aggregation': ruletypes.MetricAggregationRule,
-        'percentage_match': ruletypes.PercentageMatchRule,
+        "frequency": ruletypes.FrequencyRule,
+        "any": ruletypes.AnyRule,
+        "spike": ruletypes.SpikeRule,
+        "blacklist": ruletypes.BlacklistRule,
+        "whitelist": ruletypes.WhitelistRule,
+        "change": ruletypes.ChangeRule,
+        "flatline": ruletypes.FlatlineRule,
+        "new_term": ruletypes.NewTermsRule,
+        "cardinality": ruletypes.CardinalityRule,
+        "metric_aggregation": ruletypes.MetricAggregationRule,
+        "percentage_match": ruletypes.PercentageMatchRule,
     }
 
     # Used to map names of alerts to their classes
     alerts_mapping = {
-        'email': alerter.EmailAlerter,
-        'jira': alerter.JiraAlerter,
-        'opsgenie': OpsGenieAlerter,
-        'stomp': alerter.StompAlerter,
-        'debug': alerter.DebugAlerter,
-        'command': alerter.CommandAlerter,
-        'sns': alerter.SnsAlerter,
-        'hipchat': alerter.HipChatAlerter,
-        'stride': alerter.StrideAlerter,
-        'ms_teams': alerter.MsTeamsAlerter,
-        'slack': alerter.SlackAlerter,
-        'mattermost': alerter.MattermostAlerter,
-        'pagerduty': alerter.PagerDutyAlerter,
-        'exotel': alerter.ExotelAlerter,
-        'twilio': alerter.TwilioAlerter,
-        'victorops': alerter.VictorOpsAlerter,
-        'telegram': alerter.TelegramAlerter,
-        'googlechat': alerter.GoogleChatAlerter,
-        'gitter': alerter.GitterAlerter,
-        'servicenow': alerter.ServiceNowAlerter,
-        'alerta': alerter.AlertaAlerter,
-        'post': alerter.HTTPPostAlerter,
-        'hivealerter': alerter.HiveAlerter
+        "email": alerter.EmailAlerter,
+        "jira": alerter.JiraAlerter,
+        "opsgenie": OpsGenieAlerter,
+        "stomp": alerter.StompAlerter,
+        "debug": alerter.DebugAlerter,
+        "command": alerter.CommandAlerter,
+        "sns": alerter.SnsAlerter,
+        "hipchat": alerter.HipChatAlerter,
+        "stride": alerter.StrideAlerter,
+        "ms_teams": alerter.MsTeamsAlerter,
+        "slack": alerter.SlackAlerter,
+        "mattermost": alerter.MattermostAlerter,
+        "pagerduty": alerter.PagerDutyAlerter,
+        "exotel": alerter.ExotelAlerter,
+        "twilio": alerter.TwilioAlerter,
+        "victorops": alerter.VictorOpsAlerter,
+        "telegram": alerter.TelegramAlerter,
+        "googlechat": alerter.GoogleChatAlerter,
+        "gitter": alerter.GitterAlerter,
+        "servicenow": alerter.ServiceNowAlerter,
+        "alerta": alerter.AlertaAlerter,
+        "post": alerter.HTTPPostAlerter,
+        "hivealerter": alerter.HiveAlerter,
     }
 
     # A partial ordering of alert types. Relative order will be preserved in the resulting alerts list
     # For example, jira goes before email so the ticket # will be added to the resulting email.
-    alerts_order = {
-        'jira': 0,
-        'email': 1
-    }
+    alerts_order = {"jira": 0, "email": 1}
 
     base_config = {}
 
     def __init__(self, conf):
         # schema for rule yaml
         self.rule_schema = jsonschema.Draft7Validator(
-            yaml.load(open(os.path.join(os.path.dirname(__file__), 'schema.yaml')), Loader=yaml.FullLoader))
+            yaml.load(
+                open(os.path.join(os.path.dirname(__file__), "schema.yaml")),
+                Loader=yaml.FullLoader,
+            )
+        )
 
         self.base_config = copy.deepcopy(conf)
 
@@ -105,18 +113,18 @@ class RulesLoader(metaclass=ABCMeta):
                 rule = self.load_configuration(rule_file, conf, args)
                 # A rule failed to load, don't try to process it
                 if not rule:
-                    log.error('Invalid rule file skipped: %s' % rule_file)
+                    log.error("Invalid rule file skipped: %s" % rule_file)
                     continue
                 # By setting "is_enabled: False" in rule file, a rule is easily disabled
-                if 'is_enabled' in rule and not rule['is_enabled']:
+                if "is_enabled" in rule and not rule["is_enabled"]:
                     continue
-                if rule['name'] in names:
-                    raise EAException('Duplicate rule named %s' % (rule['name']))
+                if rule["name"] in names:
+                    raise EAException("Duplicate rule named %s" % (rule["name"]))
             except EAException as e:
-                raise EAException('Error loading file %s: %s' % (rule_file, e))
+                raise EAException("Error loading file %s: %s" % (rule_file, e))
 
             rules.append(rule)
-            names.append(rule['name'])
+            names.append(rule["name"])
 
         return rules
 
@@ -159,7 +167,7 @@ class RulesLoader(metaclass=ABCMeta):
         :return: rule name that will all `get_yaml` to retrieve the yaml of the rule
         :rtype: str
         """
-        return rule['import']
+        return rule["import"]
 
     def load_configuration(self, filename, conf, args=None):
         """ Load a yaml rule file and fill in the relevant fields with objects.
@@ -181,21 +189,19 @@ class RulesLoader(metaclass=ABCMeta):
         :return: Loaded rule dict
         :rtype: dict
         """
-        rule = {
-            'rule_file': filename,
-        }
+        rule = {"rule_file": filename}
 
         self.import_rules.pop(filename, None)  # clear `filename` dependency
         while True:
             loaded = self.get_yaml(filename)
 
             # Special case for merging filters - if both files specify a filter merge (AND) them
-            if 'filter' in rule and 'filter' in loaded:
-                rule['filter'] = loaded['filter'] + rule['filter']
+            if "filter" in rule and "filter" in loaded:
+                rule["filter"] = loaded["filter"] + rule["filter"]
 
             loaded.update(rule)
             rule = loaded
-            if 'import' in rule:
+            if "import" in rule:
                 # Find the path of the next file.
                 import_filename = self.get_import_rule(rule)
                 # set dependencies
@@ -203,7 +209,7 @@ class RulesLoader(metaclass=ABCMeta):
                 rules.append(import_filename)
                 self.import_rules[filename] = rules
                 filename = import_filename
-                del (rule['import'])  # or we could go on forever!
+                del rule["import"]  # or we could go on forever!
             else:
                 break
 
@@ -226,210 +232,244 @@ class RulesLoader(metaclass=ABCMeta):
 
         try:
             # Set all time based parameters
-            if 'timeframe' in rule:
-                rule['timeframe'] = datetime.timedelta(**rule['timeframe'])
-            if 'realert' in rule:
-                rule['realert'] = datetime.timedelta(**rule['realert'])
+            if "timeframe" in rule:
+                rule["timeframe"] = datetime.timedelta(**rule["timeframe"])
+            if "realert" in rule:
+                rule["realert"] = datetime.timedelta(**rule["realert"])
             else:
-                if 'aggregation' in rule:
-                    rule['realert'] = datetime.timedelta(minutes=0)
+                if "aggregation" in rule:
+                    rule["realert"] = datetime.timedelta(minutes=0)
                 else:
-                    rule['realert'] = datetime.timedelta(minutes=1)
-            if 'aggregation' in rule and not rule['aggregation'].get('schedule'):
-                rule['aggregation'] = datetime.timedelta(**rule['aggregation'])
-            if 'query_delay' in rule:
-                rule['query_delay'] = datetime.timedelta(**rule['query_delay'])
-            if 'buffer_time' in rule:
-                rule['buffer_time'] = datetime.timedelta(**rule['buffer_time'])
-            if 'run_every' in rule:
-                rule['run_every'] = datetime.timedelta(**rule['run_every'])
-            if 'bucket_interval' in rule:
-                rule['bucket_interval_timedelta'] = datetime.timedelta(**rule['bucket_interval'])
-            if 'exponential_realert' in rule:
-                rule['exponential_realert'] = datetime.timedelta(**rule['exponential_realert'])
-            if 'kibana4_start_timedelta' in rule:
-                rule['kibana4_start_timedelta'] = datetime.timedelta(**rule['kibana4_start_timedelta'])
-            if 'kibana4_end_timedelta' in rule:
-                rule['kibana4_end_timedelta'] = datetime.timedelta(**rule['kibana4_end_timedelta'])
-            if 'kibana_discover_from_timedelta' in rule:
-                rule['kibana_discover_from_timedelta'] = datetime.timedelta(**rule['kibana_discover_from_timedelta'])
-            if 'kibana_discover_to_timedelta' in rule:
-                rule['kibana_discover_to_timedelta'] = datetime.timedelta(**rule['kibana_discover_to_timedelta'])
+                    rule["realert"] = datetime.timedelta(minutes=1)
+            if "aggregation" in rule and not rule["aggregation"].get("schedule"):
+                rule["aggregation"] = datetime.timedelta(**rule["aggregation"])
+            if "query_delay" in rule:
+                rule["query_delay"] = datetime.timedelta(**rule["query_delay"])
+            if "buffer_time" in rule:
+                rule["buffer_time"] = datetime.timedelta(**rule["buffer_time"])
+            if "run_every" in rule:
+                rule["run_every"] = datetime.timedelta(**rule["run_every"])
+            if "bucket_interval" in rule:
+                rule["bucket_interval_timedelta"] = datetime.timedelta(
+                    **rule["bucket_interval"]
+                )
+            if "exponential_realert" in rule:
+                rule["exponential_realert"] = datetime.timedelta(
+                    **rule["exponential_realert"]
+                )
+            if "kibana4_start_timedelta" in rule:
+                rule["kibana4_start_timedelta"] = datetime.timedelta(
+                    **rule["kibana4_start_timedelta"]
+                )
+            if "kibana4_end_timedelta" in rule:
+                rule["kibana4_end_timedelta"] = datetime.timedelta(
+                    **rule["kibana4_end_timedelta"]
+                )
+            if "kibana_discover_from_timedelta" in rule:
+                rule["kibana_discover_from_timedelta"] = datetime.timedelta(
+                    **rule["kibana_discover_from_timedelta"]
+                )
+            if "kibana_discover_to_timedelta" in rule:
+                rule["kibana_discover_to_timedelta"] = datetime.timedelta(
+                    **rule["kibana_discover_to_timedelta"]
+                )
         except (KeyError, TypeError) as e:
-            raise EAException('Invalid time format used: %s' % e)
+            raise EAException("Invalid time format used: %s" % e)
 
         # Set defaults, copy defaults from config.yaml
         for key, val in list(self.base_config.items()):
             rule.setdefault(key, val)
-        rule.setdefault('name', os.path.splitext(filename)[0])
-        rule.setdefault('realert', datetime.timedelta(seconds=0))
-        rule.setdefault('aggregation', datetime.timedelta(seconds=0))
-        rule.setdefault('query_delay', datetime.timedelta(seconds=0))
-        rule.setdefault('timestamp_field', '@timestamp')
-        rule.setdefault('filter', [])
-        rule.setdefault('timestamp_type', 'iso')
-        rule.setdefault('timestamp_format', '%Y-%m-%dT%H:%M:%SZ')
-        rule.setdefault('_source_enabled', True)
-        rule.setdefault('use_local_time', True)
-        rule.setdefault('description', "")
+        rule.setdefault("name", os.path.splitext(filename)[0])
+        rule.setdefault("realert", datetime.timedelta(seconds=0))
+        rule.setdefault("aggregation", datetime.timedelta(seconds=0))
+        rule.setdefault("query_delay", datetime.timedelta(seconds=0))
+        rule.setdefault("timestamp_field", "@timestamp")
+        rule.setdefault("filter", [])
+        rule.setdefault("timestamp_type", "iso")
+        rule.setdefault("timestamp_format", "%Y-%m-%dT%H:%M:%SZ")
+        rule.setdefault("_source_enabled", True)
+        rule.setdefault("use_local_time", True)
+        rule.setdefault("description", "")
 
         # Set timestamp_type conversion function, used when generating queries and processing hits
-        rule['timestamp_type'] = rule['timestamp_type'].strip().lower()
-        if rule['timestamp_type'] == 'iso':
-            rule['ts_to_dt'] = ts_to_dt
-            rule['dt_to_ts'] = dt_to_ts
-        elif rule['timestamp_type'] == 'unix':
-            rule['ts_to_dt'] = unix_to_dt
-            rule['dt_to_ts'] = dt_to_unix
-        elif rule['timestamp_type'] == 'unix_ms':
-            rule['ts_to_dt'] = unixms_to_dt
-            rule['dt_to_ts'] = dt_to_unixms
-        elif rule['timestamp_type'] == 'custom':
+        rule["timestamp_type"] = rule["timestamp_type"].strip().lower()
+        if rule["timestamp_type"] == "iso":
+            rule["ts_to_dt"] = ts_to_dt
+            rule["dt_to_ts"] = dt_to_ts
+        elif rule["timestamp_type"] == "unix":
+            rule["ts_to_dt"] = unix_to_dt
+            rule["dt_to_ts"] = dt_to_unix
+        elif rule["timestamp_type"] == "unix_ms":
+            rule["ts_to_dt"] = unixms_to_dt
+            rule["dt_to_ts"] = dt_to_unixms
+        elif rule["timestamp_type"] == "custom":
+
             def _ts_to_dt_with_format(ts):
-                return ts_to_dt_with_format(ts, ts_format=rule['timestamp_format'])
+                return ts_to_dt_with_format(ts, ts_format=rule["timestamp_format"])
 
             def _dt_to_ts_with_format(dt):
-                ts = dt_to_ts_with_format(dt, ts_format=rule['timestamp_format'])
-                if 'timestamp_format_expr' in rule:
+                ts = dt_to_ts_with_format(dt, ts_format=rule["timestamp_format"])
+                if "timestamp_format_expr" in rule:
                     # eval expression passing 'ts' and 'dt'
-                    return eval(rule['timestamp_format_expr'], {'ts': ts, 'dt': dt})
+                    return eval(rule["timestamp_format_expr"], {"ts": ts, "dt": dt})
                 else:
                     return ts
 
-            rule['ts_to_dt'] = _ts_to_dt_with_format
-            rule['dt_to_ts'] = _dt_to_ts_with_format
+            rule["ts_to_dt"] = _ts_to_dt_with_format
+            rule["dt_to_ts"] = _dt_to_ts_with_format
         else:
-            raise EAException('timestamp_type must be one of iso, unix, or unix_ms')
+            raise EAException("timestamp_type must be one of iso, unix, or unix_ms")
 
         # Add support for client ssl certificate auth
-        if 'verify_certs' in conf:
-            rule.setdefault('verify_certs', conf.get('verify_certs'))
-            rule.setdefault('ca_certs', conf.get('ca_certs'))
-            rule.setdefault('client_cert', conf.get('client_cert'))
-            rule.setdefault('client_key', conf.get('client_key'))
+        if "verify_certs" in conf:
+            rule.setdefault("verify_certs", conf.get("verify_certs"))
+            rule.setdefault("ca_certs", conf.get("ca_certs"))
+            rule.setdefault("client_cert", conf.get("client_cert"))
+            rule.setdefault("client_key", conf.get("client_key"))
 
         # Set HipChat options from global config
-        rule.setdefault('hipchat_msg_color', 'red')
-        rule.setdefault('hipchat_domain', 'api.hipchat.com')
-        rule.setdefault('hipchat_notify', True)
-        rule.setdefault('hipchat_from', '')
-        rule.setdefault('hipchat_ignore_ssl_errors', False)
+        rule.setdefault("hipchat_msg_color", "red")
+        rule.setdefault("hipchat_domain", "api.hipchat.com")
+        rule.setdefault("hipchat_notify", True)
+        rule.setdefault("hipchat_from", "")
+        rule.setdefault("hipchat_ignore_ssl_errors", False)
 
         # Make sure we have required options
         if self.required_locals - frozenset(list(rule.keys())):
-            raise EAException('Missing required option(s): %s' % (', '.join(self.required_locals - frozenset(list(rule.keys())))))
+            raise EAException(
+                "Missing required option(s): %s"
+                % (", ".join(self.required_locals - frozenset(list(rule.keys()))))
+            )
 
-        if 'include' in rule and type(rule['include']) != list:
-            raise EAException('include option must be a list')
+        if "include" in rule and type(rule["include"]) != list:
+            raise EAException("include option must be a list")
 
-        raw_query_key = rule.get('query_key')
+        raw_query_key = rule.get("query_key")
         if isinstance(raw_query_key, list):
             if len(raw_query_key) > 1:
-                rule['compound_query_key'] = raw_query_key
-                rule['query_key'] = ','.join(raw_query_key)
+                rule["compound_query_key"] = raw_query_key
+                rule["query_key"] = ",".join(raw_query_key)
             elif len(raw_query_key) == 1:
-                rule['query_key'] = raw_query_key[0]
+                rule["query_key"] = raw_query_key[0]
             else:
-                del(rule['query_key'])
+                del rule["query_key"]
 
-        if isinstance(rule.get('aggregation_key'), list):
-            rule['compound_aggregation_key'] = rule['aggregation_key']
-            rule['aggregation_key'] = ','.join(rule['aggregation_key'])
+        if isinstance(rule.get("aggregation_key"), list):
+            rule["compound_aggregation_key"] = rule["aggregation_key"]
+            rule["aggregation_key"] = ",".join(rule["aggregation_key"])
 
-        if isinstance(rule.get('compare_key'), list):
-            rule['compound_compare_key'] = rule['compare_key']
-            rule['compare_key'] = ','.join(rule['compare_key'])
-        elif 'compare_key' in rule:
-            rule['compound_compare_key'] = [rule['compare_key']]
+        if isinstance(rule.get("compare_key"), list):
+            rule["compound_compare_key"] = rule["compare_key"]
+            rule["compare_key"] = ",".join(rule["compare_key"])
+        elif "compare_key" in rule:
+            rule["compound_compare_key"] = [rule["compare_key"]]
         # Add QK, CK and timestamp to include
-        include = rule.get('include', ['*'])
-        if 'query_key' in rule:
-            include.append(rule['query_key'])
-        if 'compound_query_key' in rule:
-            include += rule['compound_query_key']
-        if 'compound_aggregation_key' in rule:
-            include += rule['compound_aggregation_key']
-        if 'compare_key' in rule:
-            include.append(rule['compare_key'])
-        if 'compound_compare_key' in rule:
-            include += rule['compound_compare_key']
-        if 'top_count_keys' in rule:
-            include += rule['top_count_keys']
-        include.append(rule['timestamp_field'])
-        rule['include'] = list(set(include))
+        include = rule.get("include", ["*"])
+        if "query_key" in rule:
+            include.append(rule["query_key"])
+        if "compound_query_key" in rule:
+            include += rule["compound_query_key"]
+        if "compound_aggregation_key" in rule:
+            include += rule["compound_aggregation_key"]
+        if "compare_key" in rule:
+            include.append(rule["compare_key"])
+        if "compound_compare_key" in rule:
+            include += rule["compound_compare_key"]
+        if "top_count_keys" in rule:
+            include += rule["top_count_keys"]
+        include.append(rule["timestamp_field"])
+        rule["include"] = list(set(include))
 
         # Check that generate_kibana_url is compatible with the filters
-        if rule.get('generate_kibana_link'):
-            for es_filter in rule.get('filter'):
+        if rule.get("generate_kibana_link"):
+            for es_filter in rule.get("filter"):
                 if es_filter:
-                    if 'not' in es_filter:
-                        es_filter = es_filter['not']
-                    if 'query' in es_filter:
-                        es_filter = es_filter['query']
-                    if list(es_filter.keys())[0] not in ('term', 'query_string', 'range'):
+                    if "not" in es_filter:
+                        es_filter = es_filter["not"]
+                    if "query" in es_filter:
+                        es_filter = es_filter["query"]
+                    if list(es_filter.keys())[0] not in (
+                        "term",
+                        "query_string",
+                        "range",
+                    ):
                         raise EAException(
-                            'generate_kibana_link is incompatible with filters other than term, query_string and range.'
-                            'Consider creating a dashboard and using use_kibana_dashboard instead.')
+                            "generate_kibana_link is incompatible with filters other than term, query_string and range."
+                            "Consider creating a dashboard and using use_kibana_dashboard instead."
+                        )
 
         # Check that doc_type is provided if use_count/terms_query
-        if rule.get('use_count_query') or rule.get('use_terms_query'):
-            if 'doc_type' not in rule:
-                raise EAException('doc_type must be specified.')
+        if rule.get("use_count_query") or rule.get("use_terms_query"):
+            if "doc_type" not in rule:
+                raise EAException("doc_type must be specified.")
 
         # Check that query_key is set if use_terms_query
-        if rule.get('use_terms_query'):
-            if 'query_key' not in rule:
-                raise EAException('query_key must be specified with use_terms_query')
+        if rule.get("use_terms_query"):
+            if "query_key" not in rule:
+                raise EAException("query_key must be specified with use_terms_query")
 
         # Warn if use_strf_index is used with %y, %M or %D
         # (%y = short year, %M = minutes, %D = full date)
-        if rule.get('use_strftime_index'):
-            for token in ['%y', '%M', '%D']:
-                if token in rule.get('index'):
-                    log.warning('Did you mean to use %s in the index? '
-                                    'The index will be formatted like %s' % (token,
-                                                                             datetime.datetime.now().strftime(
-                                                                                 rule.get('index'))))
+        if rule.get("use_strftime_index"):
+            for token in ["%y", "%M", "%D"]:
+                if token in rule.get("index"):
+                    log.warning(
+                        "Did you mean to use %s in the index? "
+                        "The index will be formatted like %s"
+                        % (token, datetime.datetime.now().strftime(rule.get("index")))
+                    )
 
-        if rule.get('scan_entire_timeframe') and not rule.get('timeframe'):
-            raise EAException('scan_entire_timeframe can only be used if there is a timeframe specified')
+        if rule.get("scan_entire_timeframe") and not rule.get("timeframe"):
+            raise EAException(
+                "scan_entire_timeframe can only be used if there is a timeframe specified"
+            )
 
     def load_modules(self, rule, args=None):
         """ Loads things that could be modules. Enhancements, alerts and rule type. """
         # Set match enhancements
         match_enhancements = []
-        for enhancement_name in rule.get('match_enhancements', []):
+        for enhancement_name in rule.get("match_enhancements", []):
             if enhancement_name in dir(enhancements):
                 enhancement = getattr(enhancements, enhancement_name)
             else:
                 enhancement = get_module(enhancement_name)
             if not issubclass(enhancement, enhancements.BaseEnhancement):
-                raise EAException("Enhancement module %s not a subclass of BaseEnhancement" % enhancement_name)
+                raise EAException(
+                    "Enhancement module %s not a subclass of BaseEnhancement"
+                    % enhancement_name
+                )
             match_enhancements.append(enhancement(rule))
-        rule['match_enhancements'] = match_enhancements
+        rule["match_enhancements"] = match_enhancements
 
         # Convert rule type into RuleType object
-        if rule['type'] in self.rules_mapping:
-            rule['type'] = self.rules_mapping[rule['type']]
+        if rule["type"] in self.rules_mapping:
+            rule["type"] = self.rules_mapping[rule["type"]]
         else:
-            rule['type'] = get_module(rule['type'])
-            if not issubclass(rule['type'], ruletypes.RuleType):
-                raise EAException('Rule module %s is not a subclass of RuleType' % (rule['type']))
+            rule["type"] = get_module(rule["type"])
+            if not issubclass(rule["type"], ruletypes.RuleType):
+                raise EAException(
+                    "Rule module %s is not a subclass of RuleType" % (rule["type"])
+                )
 
         # Make sure we have required alert and type options
-        reqs = rule['type'].required_options
+        reqs = rule["type"].required_options
 
         if reqs - frozenset(list(rule.keys())):
-            raise EAException('Missing required option(s): %s' % (', '.join(reqs - frozenset(list(rule.keys())))))
+            raise EAException(
+                "Missing required option(s): %s"
+                % (", ".join(reqs - frozenset(list(rule.keys()))))
+            )
         # Instantiate rule
         try:
-            rule['type'] = rule['type'](rule, args)
+            rule["type"] = rule["type"](rule, args)
         except (KeyError, EAException) as e:
-            raise EAException('Error initializing rule %s: %s' % (rule['name'], e)).with_traceback(sys.exc_info()[2])
+            raise EAException(
+                "Error initializing rule %s: %s" % (rule["name"], e)
+            ).with_traceback(sys.exc_info()[2])
         # Instantiate alerts only if we're not in debug mode
         # In debug mode alerts are not actually sent so don't bother instantiating them
         if not args or not args.debug:
-            rule['alert'] = self.load_alerts(rule, alert_field=rule['alert'])
+            rule["alert"] = self.load_alerts(rule, alert_field=rule["alert"])
 
     def load_alerts(self, rule, alert_field):
         def normalize_config(alert):
@@ -440,7 +480,9 @@ class RulesLoader(metaclass=ABCMeta):
             elif isinstance(alert, dict):
                 name, config = next(iter(list(alert.items())))
                 config_copy = copy.copy(rule)
-                config_copy.update(config)  # warning, this (intentionally) mutates the rule dict
+                config_copy.update(
+                    config
+                )  # warning, this (intentionally) mutates the rule dict
                 return name, config_copy
             else:
                 raise EAException()
@@ -448,11 +490,16 @@ class RulesLoader(metaclass=ABCMeta):
         def create_alert(alert, alert_config):
             alert_class = self.alerts_mapping.get(alert) or get_module(alert)
             if not issubclass(alert_class, alerter.Alerter):
-                raise EAException('Alert module %s is not a subclass of Alerter' % alert)
-            missing_options = (rule['type'].required_options | alert_class.required_options) - frozenset(
-                alert_config or [])
+                raise EAException(
+                    "Alert module %s is not a subclass of Alerter" % alert
+                )
+            missing_options = (
+                rule["type"].required_options | alert_class.required_options
+            ) - frozenset(alert_config or [])
             if missing_options:
-                raise EAException('Missing required option(s): %s' % (', '.join(missing_options)))
+                raise EAException(
+                    "Missing required option(s): %s" % (", ".join(missing_options))
+                )
             return alert_class(alert_config)
 
         try:
@@ -460,23 +507,28 @@ class RulesLoader(metaclass=ABCMeta):
                 alert_field = [alert_field]
 
             alert_field = [normalize_config(x) for x in alert_field]
-            alert_field = sorted(alert_field, key=lambda a_b: self.alerts_order.get(a_b[0], 1))
+            alert_field = sorted(
+                alert_field, key=lambda a_b: self.alerts_order.get(a_b[0], 1)
+            )
             # Convert all alerts into Alerter objects
             alert_field = [create_alert(a, b) for a, b in alert_field]
 
         except (KeyError, EAException) as e:
-            raise EAException('Error initiating alert %s: %s' % (rule['alert'], e)).with_traceback(sys.exc_info()[2])
+            raise EAException(
+                "Error initiating alert %s: %s" % (rule["alert"], e)
+            ).with_traceback(sys.exc_info()[2])
 
         return alert_field
 
     @staticmethod
     def adjust_deprecated_values(rule):
         # From rename of simple HTTP alerter
-        if rule.get('type') == 'simple':
-            rule['type'] = 'post'
-            if 'simple_proxy' in rule:
-                rule['http_post_proxy'] = rule['simple_proxy']
-            if 'simple_webhook_url' in rule:
-                rule['http_post_url'] = rule['simple_webhook_url']
+        if rule.get("type") == "simple":
+            rule["type"] = "post"
+            if "simple_proxy" in rule:
+                rule["http_post_proxy"] = rule["simple_proxy"]
+            if "simple_webhook_url" in rule:
+                rule["http_post_url"] = rule["simple_webhook_url"]
             log.warning(
-                '"simple" alerter has been renamed "post" and comptability may be removed in a future release.')
+                '"simple" alerter has been renamed "post" and comptability may be removed in a future release.'
+            )

@@ -1,14 +1,15 @@
 import datetime
 
 from blist import sortedlist
-
 from elastalert.utils.util import new_get_event_ts
 
 
-class EventWindow():
+class EventWindow:
     """ A container for hold event counts for rules which need a chronological ordered event window. """
 
-    def __init__(self, timeframe, onRemoved=None, getTimestamp=new_get_event_ts('@timestamp')):
+    def __init__(
+        self, timeframe, onRemoved=None, getTimestamp=new_get_event_ts("@timestamp")
+    ):
         self.timeframe = timeframe
         self.onRemoved = onRemoved
         self.get_ts = getTimestamp

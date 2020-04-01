@@ -6,12 +6,11 @@ import re
 import sys
 
 import pytz
-from six import string_types
-
 from elastalert import ElasticSearchClient
 from elastalert.auth import Auth
 from elastalert.exceptions import EAException
 from elastalert.utils.time import total_seconds, ts_now
+from six import string_types
 
 
 def get_module(module_name):
@@ -20,11 +19,13 @@ def get_module(module_name):
     Returns object or raises EAException on error. """
     sys.path.append(os.getcwd())
     try:
-        module_path, module_class = module_name.rsplit('.', 1)
+        module_path, module_class = module_name.rsplit(".", 1)
         base_module = __import__(module_path, globals(), locals(), [module_class])
         module = getattr(base_module, module_class)
     except (ImportError, AttributeError, ValueError) as e:
-        raise EAException("Could not import module %s: %s" % (module_name, e)).with_traceback(sys.exc_info()[2])
+        raise EAException(
+            "Could not import module %s: %s" % (module_name, e)
+        ).with_traceback(sys.exc_info()[2])
     return module
 
 
@@ -75,16 +76,16 @@ def _find_es_dict_by_key(lookup_dict, term):
     dict_cursor = lookup_dict
 
     while term:
-        split_results = re.split(r'\[(\d)\]', term, maxsplit=1)
+        split_results = re.split(r"\[(\d)\]", term, maxsplit=1)
         if len(split_results) == 3:
             sub_term, index, term = split_results
             index = int(index)
         else:
-            sub_term, index, term = split_results + [None, '']
+            sub_term, index, term = split_results + [None, ""]
 
-        subkeys = sub_term.split('.')
+        subkeys = sub_term.split(".")
 
-        subkey = ''
+        subkey = ""
 
         while len(subkeys) > 0:
             if not dict_cursor:
@@ -96,13 +97,13 @@ def _find_es_dict_by_key(lookup_dict, term):
                 if len(subkeys) == 0:
                     break
                 dict_cursor = dict_cursor[subkey]
-                subkey = ''
+                subkey = ""
             elif len(subkeys) == 0:
                 # If there are no keys left to match, return None values
                 dict_cursor = None
                 subkey = None
             else:
-                subkey += '.'
+                subkey += "."
 
         if index is not None and subkey:
             dict_cursor = dict_cursor[subkey]
@@ -162,10 +163,12 @@ def format_index(index, start, end, add_extra=False):
         while len(indices) == num:
             original_start -= datetime.timedelta(days=1)
             new_index = original_start.strftime(index)
-            assert new_index != index, "You cannot use a static index with search_extra_index"
+            assert (
+                new_index != index
+            ), "You cannot use a static index with search_extra_index"
             indices.add(new_index)
 
-    return ','.join(indices)
+    return ",".join(indices)
 
 
 def cronite_datetime_to_timestamp(self, d):
@@ -180,9 +183,9 @@ def cronite_datetime_to_timestamp(self, d):
 
 def add_raw_postfix(field, is_five_or_above):
     if is_five_or_above:
-        end = '.keyword'
+        end = ".keyword"
     else:
-        end = '.raw'
+        end = ".raw"
     if not field.endswith(end):
         field += end
     return field
@@ -194,9 +197,9 @@ def replace_dots_in_field_names(document):
     for key, value in list(document.items()):
         if isinstance(value, dict):
             value = replace_dots_in_field_names(value)
-        if isinstance(key, string_types) and key.find('.') != -1:
+        if isinstance(key, string_types) and key.find(".") != -1:
             del document[key]
-            document[key.replace('.', '_')] = value
+            document[key.replace(".", "_")] = value
     return document
 
 
@@ -204,11 +207,13 @@ def elasticsearch_client(conf):
     """ returns an :class:`ElasticSearchClient` instance configured using an es_conn_config """
     es_conn_conf = build_es_conn_config(conf)
     auth = Auth()
-    es_conn_conf['http_auth'] = auth(host=es_conn_conf['es_host'],
-                                     username=es_conn_conf['es_username'],
-                                     password=es_conn_conf['es_password'],
-                                     aws_region=es_conn_conf['aws_region'],
-                                     profile_name=es_conn_conf['profile'])
+    es_conn_conf["http_auth"] = auth(
+        host=es_conn_conf["es_host"],
+        username=es_conn_conf["es_username"],
+        password=es_conn_conf["es_password"],
+        aws_region=es_conn_conf["aws_region"],
+        profile_name=es_conn_conf["profile"],
+    )
 
     return ElasticSearchClient(es_conn_conf)
 
@@ -219,57 +224,57 @@ def build_es_conn_config(conf):
     with properly initialized values for 'es_host', 'es_port', 'use_ssl' and 'http_auth' which
     will be a basicauth username:password formatted string """
     parsed_conf = {}
-    parsed_conf['use_ssl'] = os.environ.get('ES_USE_SSL', False)
-    parsed_conf['verify_certs'] = True
-    parsed_conf['ca_certs'] = None
-    parsed_conf['client_cert'] = None
-    parsed_conf['client_key'] = None
-    parsed_conf['http_auth'] = None
-    parsed_conf['es_username'] = None
-    parsed_conf['es_password'] = None
-    parsed_conf['aws_region'] = None
-    parsed_conf['profile'] = None
-    parsed_conf['es_host'] = os.environ.get('ES_HOST', conf['es_host'])
-    parsed_conf['es_port'] = int(os.environ.get('ES_PORT', conf['es_port']))
-    parsed_conf['es_url_prefix'] = ''
-    parsed_conf['es_conn_timeout'] = conf.get('es_conn_timeout', 20)
-    parsed_conf['send_get_body_as'] = conf.get('es_send_get_body_as', 'GET')
+    parsed_conf["use_ssl"] = os.environ.get("ES_USE_SSL", False)
+    parsed_conf["verify_certs"] = True
+    parsed_conf["ca_certs"] = None
+    parsed_conf["client_cert"] = None
+    parsed_conf["client_key"] = None
+    parsed_conf["http_auth"] = None
+    parsed_conf["es_username"] = None
+    parsed_conf["es_password"] = None
+    parsed_conf["aws_region"] = None
+    parsed_conf["profile"] = None
+    parsed_conf["es_host"] = os.environ.get("ES_HOST", conf["es_host"])
+    parsed_conf["es_port"] = int(os.environ.get("ES_PORT", conf["es_port"]))
+    parsed_conf["es_url_prefix"] = ""
+    parsed_conf["es_conn_timeout"] = conf.get("es_conn_timeout", 20)
+    parsed_conf["send_get_body_as"] = conf.get("es_send_get_body_as", "GET")
 
-    if os.environ.get('ES_USERNAME'):
-        parsed_conf['es_username'] = os.environ.get('ES_USERNAME')
-        parsed_conf['es_password'] = os.environ.get('ES_PASSWORD')
-    elif 'es_username' in conf:
-        parsed_conf['es_username'] = conf['es_username']
-        parsed_conf['es_password'] = conf['es_password']
+    if os.environ.get("ES_USERNAME"):
+        parsed_conf["es_username"] = os.environ.get("ES_USERNAME")
+        parsed_conf["es_password"] = os.environ.get("ES_PASSWORD")
+    elif "es_username" in conf:
+        parsed_conf["es_username"] = conf["es_username"]
+        parsed_conf["es_password"] = conf["es_password"]
 
-    if 'aws_region' in conf:
-        parsed_conf['aws_region'] = conf['aws_region']
+    if "aws_region" in conf:
+        parsed_conf["aws_region"] = conf["aws_region"]
 
     # Deprecated
-    if 'boto_profile' in conf:
+    if "boto_profile" in conf:
         logging.warning('Found deprecated "boto_profile", use "profile" instead!')
-        parsed_conf['profile'] = conf['boto_profile']
+        parsed_conf["profile"] = conf["boto_profile"]
 
-    if 'profile' in conf:
-        parsed_conf['profile'] = conf['profile']
+    if "profile" in conf:
+        parsed_conf["profile"] = conf["profile"]
 
-    if 'use_ssl' in conf:
-        parsed_conf['use_ssl'] = conf['use_ssl']
+    if "use_ssl" in conf:
+        parsed_conf["use_ssl"] = conf["use_ssl"]
 
-    if 'verify_certs' in conf:
-        parsed_conf['verify_certs'] = conf['verify_certs']
+    if "verify_certs" in conf:
+        parsed_conf["verify_certs"] = conf["verify_certs"]
 
-    if 'ca_certs' in conf:
-        parsed_conf['ca_certs'] = conf['ca_certs']
+    if "ca_certs" in conf:
+        parsed_conf["ca_certs"] = conf["ca_certs"]
 
-    if 'client_cert' in conf:
-        parsed_conf['client_cert'] = conf['client_cert']
+    if "client_cert" in conf:
+        parsed_conf["client_cert"] = conf["client_cert"]
 
-    if 'client_key' in conf:
-        parsed_conf['client_key'] = conf['client_key']
+    if "client_key" in conf:
+        parsed_conf["client_key"] = conf["client_key"]
 
-    if 'es_url_prefix' in conf:
-        parsed_conf['es_url_prefix'] = conf['es_url_prefix']
+    if "es_url_prefix" in conf:
+        parsed_conf["es_url_prefix"] = conf["es_url_prefix"]
 
     return parsed_conf
 
@@ -278,14 +283,14 @@ def pytzfy(dt):
     # apscheduler requires pytz timezone objects
     # This function will replace a dateutil.tz one with a pytz one
     if dt.tzinfo is not None:
-        new_tz = pytz.timezone(dt.tzinfo.tzname('Y is this even required??'))
+        new_tz = pytz.timezone(dt.tzinfo.tzname("Y is this even required??"))
         return dt.replace(tzinfo=new_tz)
     return dt
 
 
 def parse_duration(value):
     """Convert ``unit=num`` spec into a ``timedelta`` object."""
-    unit, num = value.split('=')
+    unit, num = value.split("=")
     return datetime.timedelta(**{unit: int(num)})
 
 
@@ -295,7 +300,7 @@ def parse_deadline(value):
     return ts_now() + duration
 
 
-def flatten_dict(dct, delim='.', prefix=''):
+def flatten_dict(dct, delim=".", prefix=""):
     ret = {}
     for key, val in list(dct.items()):
         if type(val) == dict:
@@ -305,7 +310,7 @@ def flatten_dict(dct, delim='.', prefix=''):
     return ret
 
 
-def resolve_string(string, match, missing_text='<MISSING VALUE>'):
+def resolve_string(string, match, missing_text="<MISSING VALUE>"):
     """
         Given a python string that may contain references to fields on the match dictionary,
             the strings are replaced using the corresponding values.
@@ -321,16 +326,16 @@ def resolve_string(string, match, missing_text='<MISSING VALUE>'):
     flat_match = flatten_dict(match)
     flat_match.update(match)
     dd_match = collections.defaultdict(lambda: missing_text, flat_match)
-    dd_match['_missing_value'] = missing_text
+    dd_match["_missing_value"] = missing_text
     while True:
         try:
             string = string % dd_match
             string = string.format(**dd_match)
             break
         except KeyError as e:
-            if '{%s}' % str(e).strip("'") not in string:
+            if "{%s}" % str(e).strip("'") not in string:
                 break
-            string = string.replace('{%s}' % str(e).strip("'"), '{_missing_value}')
+            string = string.replace("{%s}" % str(e).strip("'"), "{_missing_value}")
 
     return string
 
@@ -342,7 +347,7 @@ def should_scrolling_continue(rule_conf):
     :param: rule_conf as dict
     :rtype: bool
     """
-    max_scrolling = rule_conf.get('max_scrolling_count')
-    stop_the_scroll = 0 < max_scrolling <= rule_conf.get('scrolling_cycle')
+    max_scrolling = rule_conf.get("max_scrolling_count")
+    stop_the_scroll = 0 < max_scrolling <= rule_conf.get("scrolling_cycle")
 
     return not stop_the_scroll

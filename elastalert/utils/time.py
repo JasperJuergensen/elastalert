@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
-        if hasattr(obj, 'isoformat'):
+        if hasattr(obj, "isoformat"):
             return obj.isoformat()
         else:
             return json.JSONEncoder.default(self, obj)
@@ -28,16 +28,16 @@ def ts_to_dt(timestamp):
 
 def dt_to_ts(dt):
     if not isinstance(dt, datetime.datetime):
-        log.warning('Expected datetime, got %s' % (type(dt)))
+        log.warning("Expected datetime, got %s" % (type(dt)))
         return dt
     ts = dt.isoformat()
     # Round microseconds to milliseconds
     if dt.tzinfo is None:
         # Implicitly convert local times to UTC
-        return ts + 'Z'
+        return ts + "Z"
     # isoformat() uses microsecond accuracy and timezone offsets
     # but we should try to use millisecond accuracy and Z to indicate UTC
-    return ts.replace('000+00:00', 'Z').replace('+00:00', 'Z')
+    return ts.replace("000+00:00", "Z").replace("+00:00", "Z")
 
 
 def ts_to_dt_with_format(timestamp, ts_format):
@@ -52,7 +52,7 @@ def ts_to_dt_with_format(timestamp, ts_format):
 
 def dt_to_ts_with_format(dt, ts_format):
     if not isinstance(dt, datetime.datetime):
-        log.warning('Expected datetime, got %s' % (type(dt)))
+        log.warning("Expected datetime, got %s" % (type(dt)))
         return dt
     ts = dt.strftime(ts_format)
     return ts
@@ -78,7 +78,7 @@ def pretty_ts(timestamp, tz=True):
         dt = ts_to_dt(timestamp)
     if tz:
         dt = dt.astimezone(dateutil.tz.tzlocal())
-    return dt.strftime('%Y-%m-%d %H:%M %Z')
+    return dt.strftime("%Y-%m-%d %H:%M %Z")
 
 
 def ts_add(ts, td):
@@ -94,10 +94,12 @@ def total_seconds(dt):
     # For python 2.6 compatability
     if dt is None:
         return 0
-    elif hasattr(dt, 'total_seconds'):
+    elif hasattr(dt, "total_seconds"):
         return dt.total_seconds()
     else:
-        return (dt.microseconds + (dt.seconds + dt.days * 24 * 3600) * 10**6) / 10**6
+        return (
+            dt.microseconds + (dt.seconds + dt.days * 24 * 3600) * 10 ** 6
+        ) / 10 ** 6
 
 
 def dt_to_int(dt):
@@ -116,7 +118,9 @@ def unix_to_dt(ts):
 
 
 def dt_to_unix(dt):
-    return int(total_seconds(dt - datetime.datetime(1970, 1, 1, tzinfo=dateutil.tz.tzutc())))
+    return int(
+        total_seconds(dt - datetime.datetime(1970, 1, 1, tzinfo=dateutil.tz.tzutc()))
+    )
 
 
 def dt_to_unixms(dt):

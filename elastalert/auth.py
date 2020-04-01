@@ -1,4 +1,5 @@
 import os
+
 import boto3
 from aws_requests_auth.aws_auth import AWSRequestsAuth
 
@@ -8,11 +9,7 @@ class RefeshableAWSRequestsAuth(AWSRequestsAuth):
     A class ensuring that AWS request signing uses a refreshed credential
     """
 
-    def __init__(self,
-                 refreshable_credential,
-                 aws_host,
-                 aws_region,
-                 aws_service):
+    def __init__(self, refreshable_credential, aws_host, aws_region, aws_service):
         """
         :param refreshable_credential: A credential class that refreshes STS or IAM Instance Profile credentials
         :type refreshable_credential: :class:`botocore.credentials.RefreshableCredentials`
@@ -36,7 +33,6 @@ class RefeshableAWSRequestsAuth(AWSRequestsAuth):
 
 
 class Auth(object):
-
     def __call__(self, host, username, password, aws_region, profile_name):
         """ Return the authorization header.
 
@@ -47,15 +43,18 @@ class Auth(object):
         :param profile_name: AWS profile to use for connecting. Only required when signing requests.
         """
         if username and password:
-            return username + ':' + password
+            return username + ":" + password
 
-        if not aws_region and not os.environ.get('AWS_DEFAULT_REGION'):
+        if not aws_region and not os.environ.get("AWS_DEFAULT_REGION"):
             return None
 
-        session = boto3.session.Session(profile_name=profile_name, region_name=aws_region)
+        session = boto3.session.Session(
+            profile_name=profile_name, region_name=aws_region
+        )
 
         return RefeshableAWSRequestsAuth(
             refreshable_credential=session.get_credentials(),
             aws_host=host,
             aws_region=session.region_name,
-            aws_service='es')
+            aws_service="es",
+        )

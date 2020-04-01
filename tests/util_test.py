@@ -1,36 +1,42 @@
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import mock
 import pytest
 from dateutil.parser import parse as dt
+from elastalert.utils.util import (
+    add_raw_postfix,
+    format_index,
+    lookup_es_key,
+    parse_deadline,
+    parse_duration,
+    replace_dots_in_field_names,
+    resolve_string,
+    set_es_key,
+    should_scrolling_continue,
+)
 
-from elastalert.utils.util import add_raw_postfix
-from elastalert.utils.util import format_index
-from elastalert.utils.util import lookup_es_key
-from elastalert.utils.util import parse_deadline
-from elastalert.utils.util import parse_duration
-from elastalert.utils.util import replace_dots_in_field_names
-from elastalert.utils.util import resolve_string
-from elastalert.utils.util import set_es_key
-from elastalert.utils.util import should_scrolling_continue
 
-
-@pytest.mark.parametrize('spec, expected_delta', [
-    ('hours=2', timedelta(hours=2)),
-    ('minutes=30', timedelta(minutes=30)),
-    ('seconds=45', timedelta(seconds=45)),
-])
+@pytest.mark.parametrize(
+    "spec, expected_delta",
+    [
+        ("hours=2", timedelta(hours=2)),
+        ("minutes=30", timedelta(minutes=30)),
+        ("seconds=45", timedelta(seconds=45)),
+    ],
+)
 def test_parse_duration(spec, expected_delta):
     """``unit=num`` specs can be translated into ``timedelta`` instances."""
     assert parse_duration(spec) == expected_delta
 
 
-@pytest.mark.parametrize('spec, expected_deadline', [
-    ('hours=2', dt('2017-07-07T12:00:00.000Z')),
-    ('minutes=30', dt('2017-07-07T10:30:00.000Z')),
-    ('seconds=45', dt('2017-07-07T10:00:45.000Z')),
-])
+@pytest.mark.parametrize(
+    "spec, expected_deadline",
+    [
+        ("hours=2", dt("2017-07-07T12:00:00.000Z")),
+        ("minutes=30", dt("2017-07-07T10:30:00.000Z")),
+        ("seconds=45", dt("2017-07-07T10:00:45.000Z")),
+    ],
+)
 def test_parse_deadline(spec, expected_deadline):
     """``unit=num`` specs can be translated into ``datetime`` instances."""
 
@@ -38,152 +44,108 @@ def test_parse_deadline(spec, expected_deadline):
     class MockDatetime(datetime):
         @staticmethod
         def utcnow():
-            return dt('2017-07-07T10:00:00.000Z')
+            return dt("2017-07-07T10:00:00.000Z")
 
-    with mock.patch('datetime.datetime', MockDatetime):
+    with mock.patch("datetime.datetime", MockDatetime):
         assert parse_deadline(spec) == expected_deadline
 
 
 def test_setting_keys(ea):
     expected = 12467267
     record = {
-        'Message': '12345',
-        'Fields': {
-            'ts': 'fail',
-            'severity': 'large',
-            'user': 'jimmay'
-        }
+        "Message": "12345",
+        "Fields": {"ts": "fail", "severity": "large", "user": "jimmay"},
     }
 
     # Set the value
-    assert set_es_key(record, 'Fields.ts', expected)
+    assert set_es_key(record, "Fields.ts", expected)
 
     # Get the value again
-    assert lookup_es_key(record, 'Fields.ts') == expected
+    assert lookup_es_key(record, "Fields.ts") == expected
 
 
 def test_looking_up_missing_keys(ea):
     record = {
-        'Message': '12345',
-        'Fields': {
-            'severity': 'large',
-            'user': 'jimmay',
-            'null': None
-        }
+        "Message": "12345",
+        "Fields": {"severity": "large", "user": "jimmay", "null": None},
     }
 
-    assert lookup_es_key(record, 'Fields.ts') is None
+    assert lookup_es_key(record, "Fields.ts") is None
 
-    assert lookup_es_key(record, 'Fields.null.foo') is None
+    assert lookup_es_key(record, "Fields.null.foo") is None
 
 
 def test_looking_up_nested_keys(ea):
     expected = 12467267
     record = {
-        'Message': '12345',
-        'Fields': {
-            'ts': expected,
-            'severity': 'large',
-            'user': 'jimmay'
-        }
+        "Message": "12345",
+        "Fields": {"ts": expected, "severity": "large", "user": "jimmay"},
     }
 
-    assert lookup_es_key(record, 'Fields.ts') == expected
+    assert lookup_es_key(record, "Fields.ts") == expected
 
 
 def test_looking_up_nested_composite_keys(ea):
     expected = 12467267
     record = {
-        'Message': '12345',
-        'Fields': {
-            'ts.value': expected,
-            'severity': 'large',
-            'user': 'jimmay'
-        }
+        "Message": "12345",
+        "Fields": {"ts.value": expected, "severity": "large", "user": "jimmay"},
     }
 
-    assert lookup_es_key(record, 'Fields.ts.value') == expected
+    assert lookup_es_key(record, "Fields.ts.value") == expected
 
 
 def test_looking_up_arrays(ea):
     record = {
-        'flags': [1, 2, 3],
-        'objects': [
-            {'foo': 'bar'},
-            {'foo': [{'bar': 'baz'}]},
-            {'foo': {'bar': 'baz'}}
-        ]
+        "flags": [1, 2, 3],
+        "objects": [{"foo": "bar"}, {"foo": [{"bar": "baz"}]}, {"foo": {"bar": "baz"}}],
     }
-    assert lookup_es_key(record, 'flags[0]') == 1
-    assert lookup_es_key(record, 'flags[1]') == 2
-    assert lookup_es_key(record, 'objects[0]foo') == 'bar'
-    assert lookup_es_key(record, 'objects[1]foo[0]bar') == 'baz'
-    assert lookup_es_key(record, 'objects[2]foo.bar') == 'baz'
-    assert lookup_es_key(record, 'objects[1]foo[1]bar') is None
-    assert lookup_es_key(record, 'objects[1]foo[0]baz') is None
+    assert lookup_es_key(record, "flags[0]") == 1
+    assert lookup_es_key(record, "flags[1]") == 2
+    assert lookup_es_key(record, "objects[0]foo") == "bar"
+    assert lookup_es_key(record, "objects[1]foo[0]bar") == "baz"
+    assert lookup_es_key(record, "objects[2]foo.bar") == "baz"
+    assert lookup_es_key(record, "objects[1]foo[1]bar") is None
+    assert lookup_es_key(record, "objects[1]foo[0]baz") is None
 
 
 def test_add_raw_postfix(ea):
-    expected = 'foo.raw'
-    assert add_raw_postfix('foo', False) == expected
-    assert add_raw_postfix('foo.raw', False) == expected
-    expected = 'foo.keyword'
-    assert add_raw_postfix('foo', True) == expected
-    assert add_raw_postfix('foo.keyword', True) == expected
+    expected = "foo.raw"
+    assert add_raw_postfix("foo", False) == expected
+    assert add_raw_postfix("foo.raw", False) == expected
+    expected = "foo.keyword"
+    assert add_raw_postfix("foo", True) == expected
+    assert add_raw_postfix("foo.keyword", True) == expected
 
 
 def test_replace_dots_in_field_names(ea):
-    actual = {
-        'a': {
-            'b.c': 'd',
-            'e': {
-                'f': {
-                    'g.h': 0
-                }
-            }
-        },
-        'i.j.k': 1,
-        'l': {
-            'm': 2
-        }
-    }
-    expected = {
-        'a': {
-            'b_c': 'd',
-            'e': {
-                'f': {
-                    'g_h': 0
-                }
-            }
-        },
-        'i_j_k': 1,
-        'l': {
-            'm': 2
-        }
-    }
+    actual = {"a": {"b.c": "d", "e": {"f": {"g.h": 0}}}, "i.j.k": 1, "l": {"m": 2}}
+    expected = {"a": {"b_c": "d", "e": {"f": {"g_h": 0}}}, "i_j_k": 1, "l": {"m": 2}}
     assert replace_dots_in_field_names(actual) == expected
-    assert replace_dots_in_field_names({'a': 0, 1: 2}) == {'a': 0, 1: 2}
+    assert replace_dots_in_field_names({"a": 0, 1: 2}) == {"a": 0, 1: 2}
 
 
 def test_resolve_string(ea):
     match = {
-        'name': 'mySystem',
-        'temperature': 45,
-        'humidity': 80.56,
-        'sensors': ['outsideSensor', 'insideSensor'],
-        'foo': {'bar': 'baz'}
+        "name": "mySystem",
+        "temperature": 45,
+        "humidity": 80.56,
+        "sensors": ["outsideSensor", "insideSensor"],
+        "foo": {"bar": "baz"},
     }
 
     expected_outputs = [
         "mySystem is online <MISSING VALUE>",
         "Sensors ['outsideSensor', 'insideSensor'] in the <MISSING VALUE> have temp 45 and 80.56 humidity",
         "Actuator <MISSING VALUE> in the <MISSING VALUE> has temp <MISSING VALUE>",
-        'Something baz']
+        "Something baz",
+    ]
     old_style_strings = [
         "%(name)s is online %(noKey)s",
         "Sensors %(sensors)s in the %(noPlace)s have temp %(temperature)s and %(humidity)s humidity",
         "Actuator %(noKey)s in the %(noPlace)s has temp %(noKey)s",
-        'Something %(foo.bar)s']
+        "Something %(foo.bar)s",
+    ]
 
     assert resolve_string(old_style_strings[0], match) == expected_outputs[0]
     assert resolve_string(old_style_strings[1], match) == expected_outputs[1]
@@ -194,7 +156,8 @@ def test_resolve_string(ea):
         "{name} is online {noKey}",
         "Sensors {sensors} in the {noPlace} have temp {temperature} and {humidity} humidity",
         "Actuator {noKey} in the {noPlace} has temp {noKey}",
-        "Something {foo[bar]}"]
+        "Something {foo[bar]}",
+    ]
 
     assert resolve_string(new_style_strings[0], match) == expected_outputs[0]
     assert resolve_string(new_style_strings[1], match) == expected_outputs[1]
@@ -203,24 +166,34 @@ def test_resolve_string(ea):
 
 
 def test_format_index():
-    pattern = 'logstash-%Y.%m.%d'
-    pattern2 = 'logstash-%Y.%W'
-    date = dt('2018-06-25T12:00:00Z')
-    date2 = dt('2018-06-26T12:00:00Z')
-    assert sorted(format_index(pattern, date, date).split(',')) == ['logstash-2018.06.25']
-    assert sorted(format_index(pattern, date, date2).split(',')) == ['logstash-2018.06.25', 'logstash-2018.06.26']
-    assert sorted(format_index(pattern, date, date2, True).split(',')) == ['logstash-2018.06.24',
-                                                                           'logstash-2018.06.25',
-                                                                           'logstash-2018.06.26']
-    assert sorted(format_index(pattern2, date, date2, True).split(',')) == ['logstash-2018.25', 'logstash-2018.26']
+    pattern = "logstash-%Y.%m.%d"
+    pattern2 = "logstash-%Y.%W"
+    date = dt("2018-06-25T12:00:00Z")
+    date2 = dt("2018-06-26T12:00:00Z")
+    assert sorted(format_index(pattern, date, date).split(",")) == [
+        "logstash-2018.06.25"
+    ]
+    assert sorted(format_index(pattern, date, date2).split(",")) == [
+        "logstash-2018.06.25",
+        "logstash-2018.06.26",
+    ]
+    assert sorted(format_index(pattern, date, date2, True).split(",")) == [
+        "logstash-2018.06.24",
+        "logstash-2018.06.25",
+        "logstash-2018.06.26",
+    ]
+    assert sorted(format_index(pattern2, date, date2, True).split(",")) == [
+        "logstash-2018.25",
+        "logstash-2018.26",
+    ]
 
 
 def test_should_scrolling_continue():
-    rule_no_max_scrolling = {'max_scrolling_count': 0, 'scrolling_cycle': 1}
-    rule_reached_max_scrolling = {'max_scrolling_count': 2, 'scrolling_cycle': 2}
-    rule_before_first_run = {'max_scrolling_count': 0, 'scrolling_cycle': 0}
-    rule_before_max_scrolling = {'max_scrolling_count': 2, 'scrolling_cycle': 1}
-    rule_over_max_scrolling = {'max_scrolling_count': 2, 'scrolling_cycle': 3}
+    rule_no_max_scrolling = {"max_scrolling_count": 0, "scrolling_cycle": 1}
+    rule_reached_max_scrolling = {"max_scrolling_count": 2, "scrolling_cycle": 2}
+    rule_before_first_run = {"max_scrolling_count": 0, "scrolling_cycle": 0}
+    rule_before_max_scrolling = {"max_scrolling_count": 2, "scrolling_cycle": 1}
+    rule_over_max_scrolling = {"max_scrolling_count": 2, "scrolling_cycle": 3}
 
     assert should_scrolling_continue(rule_no_max_scrolling) is True
     assert should_scrolling_continue(rule_reached_max_scrolling) is False

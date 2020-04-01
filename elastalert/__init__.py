@@ -1,10 +1,8 @@
 import copy
 import time
 
-from elasticsearch import Elasticsearch
-from elasticsearch import RequestsHttpConnection
-from elasticsearch.client import _make_path
-from elasticsearch.client import query_params
+from elasticsearch import Elasticsearch, RequestsHttpConnection
+from elasticsearch.client import _make_path, query_params
 from elasticsearch.exceptions import TransportError
 
 
@@ -15,18 +13,20 @@ class ElasticSearchClient(Elasticsearch):
         """
         :arg conf: es_conn_config dictionary. Ref. :func:`~util.build_es_conn_config`
         """
-        super(ElasticSearchClient, self).__init__(host=conf['es_host'],
-                                                  port=conf['es_port'],
-                                                  url_prefix=conf['es_url_prefix'],
-                                                  use_ssl=conf['use_ssl'],
-                                                  verify_certs=conf['verify_certs'],
-                                                  ca_certs=conf['ca_certs'],
-                                                  connection_class=RequestsHttpConnection,
-                                                  http_auth=conf['http_auth'],
-                                                  timeout=conf['es_conn_timeout'],
-                                                  send_get_body_as=conf['send_get_body_as'],
-                                                  client_cert=conf['client_cert'],
-                                                  client_key=conf['client_key'])
+        super(ElasticSearchClient, self).__init__(
+            host=conf["es_host"],
+            port=conf["es_port"],
+            url_prefix=conf["es_url_prefix"],
+            use_ssl=conf["use_ssl"],
+            verify_certs=conf["verify_certs"],
+            ca_certs=conf["ca_certs"],
+            connection_class=RequestsHttpConnection,
+            http_auth=conf["http_auth"],
+            timeout=conf["es_conn_timeout"],
+            send_get_body_as=conf["send_get_body_as"],
+            client_cert=conf["client_cert"],
+            client_key=conf["client_key"],
+        )
         self._conf = copy.copy(conf)
         self._es_version = None
 
@@ -45,7 +45,7 @@ class ElasticSearchClient(Elasticsearch):
         if self._es_version is None:
             for retry in range(3):
                 try:
-                    self._es_version = self.info()['version']['number']
+                    self._es_version = self.info()["version"]["number"]
                     break
                 except TransportError:
                     if retry == 2:
@@ -91,14 +91,14 @@ class ElasticSearchClient(Elasticsearch):
         index name, based on doc_type. """
         if not self.is_atleastsix():
             return writeback_index
-        elif doc_type == 'silence':
-            return writeback_index + '_silence'
-        elif doc_type == 'past_elastalert':
-            return writeback_index + '_past'
-        elif doc_type == 'elastalert_status':
-            return writeback_index + '_status'
-        elif doc_type == 'elastalert_error':
-            return writeback_index + '_error'
+        elif doc_type == "silence":
+            return writeback_index + "_silence"
+        elif doc_type == "past_elastalert":
+            return writeback_index + "_past"
+        elif doc_type == "elastalert_status":
+            return writeback_index + "_status"
+        elif doc_type == "elastalert_error":
+            return writeback_index + "_error"
         return writeback_index
 
     @query_params(

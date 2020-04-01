@@ -10,16 +10,17 @@ class RuleType(metaclass=ABCMeta):
 
     :param rules: A rule configuration.
     """
+
     required_options = frozenset()
 
     def __init__(self, rules, args=None):
         self.matches = []
         self.rules = rules
         self.occurrences = {}
-        self.rules['category'] = self.rules.get('category', '')
-        self.rules['description'] = self.rules.get('description', '')
-        self.rules['owner'] = self.rules.get('owner', '')
-        self.rules['priority'] = self.rules.get('priority', '2')
+        self.rules["category"] = self.rules.get("category", "")
+        self.rules["description"] = self.rules.get("description", "")
+        self.rules["owner"] = self.rules.get("owner", "")
+        self.rules["priority"] = self.rules.get("priority", "2")
 
     def add_data(self, data):
         """ The function that the ElastAlert client calls with results from ES.
@@ -38,7 +39,7 @@ class RuleType(metaclass=ABCMeta):
         :param event: The matching event, a dictionary of terms.
         """
         # Convert datetime's back to timestamps
-        ts = self.rules.get('timestamp_field')
+        ts = self.rules.get("timestamp_field")
         if ts in event:
             event[ts] = dt_to_ts(event[ts])
 
@@ -50,7 +51,7 @@ class RuleType(metaclass=ABCMeta):
         :param match: The matching event, a dictionary of terms.
         :return: A user facing string describing the match.
         """
-        return ''
+        return ""
 
     def garbage_collect(self, timestamp):
         """ Gets called periodically to remove old data that is useless beyond given timestamp.

@@ -1,33 +1,32 @@
 import json
 
+import elastalert.create_index
 import pytest
 
-import elastalert.create_index
-
 es_mappings = [
-    'elastalert',
-    'elastalert_error',
-    'elastalert_status',
-    'past_elastalert',
-    'silence'
+    "elastalert",
+    "elastalert_error",
+    "elastalert_status",
+    "past_elastalert",
+    "silence",
 ]
 
 
-@pytest.mark.parametrize('es_mapping', es_mappings)
+@pytest.mark.parametrize("es_mapping", es_mappings)
 def test_read_default_index_mapping(es_mapping):
     mapping = elastalert.create_index.read_es_index_mapping(es_mapping)
     assert es_mapping not in mapping
     print((json.dumps(mapping, indent=2)))
 
 
-@pytest.mark.parametrize('es_mapping', es_mappings)
+@pytest.mark.parametrize("es_mapping", es_mappings)
 def test_read_es_5_index_mapping(es_mapping):
     mapping = elastalert.create_index.read_es_index_mapping(es_mapping, 5)
     assert es_mapping in mapping
     print((json.dumps(mapping, indent=2)))
 
 
-@pytest.mark.parametrize('es_mapping', es_mappings)
+@pytest.mark.parametrize("es_mapping", es_mappings)
 def test_read_es_6_index_mapping(es_mapping):
     mapping = elastalert.create_index.read_es_index_mapping(es_mapping, 6)
     assert es_mapping not in mapping
