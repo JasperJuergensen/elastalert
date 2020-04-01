@@ -1,33 +1,24 @@
-# -*- coding: utf-8 -*-
 import copy
-import datetime
-import hashlib
 import logging
 import os
+import datetime
 import sys
+from abc import ABCMeta, abstractmethod
 
 import jsonschema
 import yaml
-import yaml.scanner
-from staticconf.loader import yaml_loader
 
-from . import alerts
-from . import enhancements
-from . import ruletypes
-from .opsgenie import OpsGenieAlerter
-from .util import dt_to_ts
-from .util import dt_to_ts_with_format
-from .util import dt_to_unix
-from .util import dt_to_unixms
-from .util import EAException
-from .util import get_module
-from .util import ts_to_dt
-from .util import ts_to_dt_with_format
-from .util import unix_to_dt
-from .util import unixms_to_dt
+from elastalert import enhancements, alerter, ruletypes
+from elastalert.exceptions import EAException
+from elastalert.alerter.opsgenie_alerter import OpsGenieAlerter
+from elastalert.utils.util import get_module
+from elastalert.utils.time import ts_to_dt, dt_to_ts, unix_to_dt, dt_to_unix, unixms_to_dt, dt_to_unixms, \
+    ts_to_dt_with_format, dt_to_ts_with_format
+
+log = logging.getLogger(__name__)
 
 
-class RulesLoader(object):
+class RulesLoader(metaclass=ABCMeta):
     # import rule dependency
     import_rules = {}
 
@@ -54,29 +45,29 @@ class RulesLoader(object):
 
     # Used to map names of alerts to their classes
     alerts_mapping = {
-        'email': alerts.EmailAlerter,
-        'jira': alerts.JiraAlerter,
+        'email': alerter.EmailAlerter,
+        'jira': alerter.JiraAlerter,
         'opsgenie': OpsGenieAlerter,
-        'stomp': alerts.StompAlerter,
-        'debug': alerts.DebugAlerter,
-        'command': alerts.CommandAlerter,
-        'sns': alerts.SnsAlerter,
-        'hipchat': alerts.HipChatAlerter,
-        'stride': alerts.StrideAlerter,
-        'ms_teams': alerts.MsTeamsAlerter,
-        'slack': alerts.SlackAlerter,
-        'mattermost': alerts.MattermostAlerter,
-        'pagerduty': alerts.PagerDutyAlerter,
-        'exotel': alerts.ExotelAlerter,
-        'twilio': alerts.TwilioAlerter,
-        'victorops': alerts.VictorOpsAlerter,
-        'telegram': alerts.TelegramAlerter,
-        'googlechat': alerts.GoogleChatAlerter,
-        'gitter': alerts.GitterAlerter,
-        'servicenow': alerts.ServiceNowAlerter,
-        'alerta': alerts.AlertaAlerter,
-        'post': alerts.HTTPPostAlerter,
-        'hivealerter': alerts.HiveAlerter
+        'stomp': alerter.StompAlerter,
+        'debug': alerter.DebugAlerter,
+        'command': alerter.CommandAlerter,
+        'sns': alerter.SnsAlerter,
+        'hipchat': alerter.HipChatAlerter,
+        'stride': alerter.StrideAlerter,
+        'ms_teams': alerter.MsTeamsAlerter,
+        'slack': alerter.SlackAlerter,
+        'mattermost': alerter.MattermostAlerter,
+        'pagerduty': alerter.PagerDutyAlerter,
+        'exotel': alerter.ExotelAlerter,
+        'twilio': alerter.TwilioAlerter,
+        'victorops': alerter.VictorOpsAlerter,
+        'telegram': alerter.TelegramAlerter,
+        'googlechat': alerter.GoogleChatAlerter,
+        'gitter': alerter.GitterAlerter,
+        'servicenow': alerter.ServiceNowAlerter,
+        'alerta': alerter.AlertaAlerter,
+        'post': alerter.HTTPPostAlerter,
+        'hivealerter': alerter.HiveAlerter
     }
 
     # A partial ordering of alert types. Relative order will be preserved in the resulting alerts list
@@ -114,7 +105,7 @@ class RulesLoader(object):
                 rule = self.load_configuration(rule_file, conf, args)
                 # A rule failed to load, don't try to process it
                 if not rule:
-                    logging.error('Invalid rule file skipped: %s' % rule_file)
+                    log.error('Invalid rule file skipped: %s' % rule_file)
                     continue
                 # By setting "is_enabled: False" in rule file, a rule is easily disabled
                 if 'is_enabled' in rule and not rule['is_enabled']:
@@ -129,6 +120,7 @@ class RulesLoader(object):
 
         return rules
 
+    @abstractmethod
     def get_names(self, conf, use_rule=None):
         """
         Return a list of rule names that can be passed to `get_yaml` to retrieve.
@@ -137,8 +129,9 @@ class RulesLoader(object):
         :return: A list of rule names
         :rtype: list
         """
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def get_hashes(self, conf, use_rule=None):
         """
         Discover and get the hashes of all the rules as defined in the conf.
@@ -147,8 +140,9 @@ class RulesLoader(object):
         :return: Dict of rule name to hash
         :rtype: dict
         """
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def get_yaml(self, filename):
         """
         Get and parse the yaml of the specified rule.
@@ -156,7 +150,7 @@ class RulesLoader(object):
         :return: Rule YAML dict
         :rtype: dict
         """
-        raise NotImplementedError()
+        pass
 
     def get_import_rule(self, rule):
         """
@@ -392,7 +386,7 @@ class RulesLoader(object):
         if rule.get('use_strftime_index'):
             for token in ['%y', '%M', '%D']:
                 if token in rule.get('index'):
-                    logging.warning('Did you mean to use %s in the index? '
+                    log.warning('Did you mean to use %s in the index? '
                                     'The index will be formatted like %s' % (token,
                                                                              datetime.datetime.now().strftime(
                                                                                  rule.get('index'))))
@@ -453,7 +447,7 @@ class RulesLoader(object):
 
         def create_alert(alert, alert_config):
             alert_class = self.alerts_mapping.get(alert) or get_module(alert)
-            if not issubclass(alert_class, alerts.Alerter):
+            if not issubclass(alert_class, alerter.Alerter):
                 raise EAException('Alert module %s is not a subclass of Alerter' % alert)
             missing_options = (rule['type'].required_options | alert_class.required_options) - frozenset(
                 alert_config or [])
@@ -484,69 +478,5 @@ class RulesLoader(object):
                 rule['http_post_proxy'] = rule['simple_proxy']
             if 'simple_webhook_url' in rule:
                 rule['http_post_url'] = rule['simple_webhook_url']
-            logging.warning(
+            log.warning(
                 '"simple" alerter has been renamed "post" and comptability may be removed in a future release.')
-
-
-class FileRulesLoader(RulesLoader):
-
-    # Required global (config.yaml) configuration options for the loader
-    required_globals = frozenset(['rules_folder'])
-
-    def get_names(self, conf, use_rule=None):
-        # Passing a filename directly can bypass rules_folder and .yaml checks
-        if use_rule and os.path.isfile(use_rule):
-            return [use_rule]
-        rule_folder = conf['rules_folder']
-        rule_files = []
-        if 'scan_subdirectories' in conf and conf['scan_subdirectories']:
-            for root, folders, files in os.walk(rule_folder):
-                for filename in files:
-                    if use_rule and use_rule != filename:
-                        continue
-                    if self.is_yaml(filename):
-                        rule_files.append(os.path.join(root, filename))
-        else:
-            for filename in os.listdir(rule_folder):
-                fullpath = os.path.join(rule_folder, filename)
-                if os.path.isfile(fullpath) and self.is_yaml(filename):
-                    rule_files.append(fullpath)
-        return rule_files
-
-    def get_hashes(self, conf, use_rule=None):
-        rule_files = self.get_names(conf, use_rule)
-        rule_mod_times = {}
-        for rule_file in rule_files:
-            rule_mod_times[rule_file] = self.get_rule_file_hash(rule_file)
-        return rule_mod_times
-
-    def get_yaml(self, filename):
-        try:
-            return yaml_loader(filename)
-        except yaml.scanner.ScannerError as e:
-            raise EAException('Could not parse file %s: %s' % (filename, e))
-
-    def get_import_rule(self, rule):
-        """
-        Allow for relative paths to the import rule.
-        :param dict rule:
-        :return: Path the import rule
-        :rtype: str
-        """
-        if os.path.isabs(rule['import']):
-            return rule['import']
-        else:
-            return os.path.join(os.path.dirname(rule['rule_file']), rule['import'])
-
-    def get_rule_file_hash(self, rule_file):
-        rule_file_hash = ''
-        if os.path.exists(rule_file):
-            with open(rule_file, 'rb') as fh:
-                rule_file_hash = hashlib.sha1(fh.read()).digest()
-            for import_rule_file in self.import_rules.get(rule_file, []):
-                rule_file_hash += self.get_rule_file_hash(import_rule_file)
-        return rule_file_hash
-
-    @staticmethod
-    def is_yaml(filename):
-        return filename.endswith('.yaml') or filename.endswith('.yml')

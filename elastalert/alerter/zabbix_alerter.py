@@ -1,8 +1,9 @@
-from alerts import Alerter  # , BasicMatchString
 import logging
 from pyzabbix.api import ZabbixAPI
 from pyzabbix import ZabbixSender, ZabbixMetric
 from datetime import datetime
+
+from elastalert.alerter import Alerter
 
 
 class ZabbixClient(ZabbixAPI):

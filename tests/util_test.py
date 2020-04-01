@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from datetime import datetime
 from datetime import timedelta
 
@@ -6,15 +5,15 @@ import mock
 import pytest
 from dateutil.parser import parse as dt
 
-from elastalert.util import add_raw_postfix
-from elastalert.util import format_index
-from elastalert.util import lookup_es_key
-from elastalert.util import parse_deadline
-from elastalert.util import parse_duration
-from elastalert.util import replace_dots_in_field_names
-from elastalert.util import resolve_string
-from elastalert.util import set_es_key
-from elastalert.util import should_scrolling_continue
+from elastalert.utils.util import add_raw_postfix
+from elastalert.utils.util import format_index
+from elastalert.utils.util import lookup_es_key
+from elastalert.utils.util import parse_deadline
+from elastalert.utils.util import parse_duration
+from elastalert.utils.util import replace_dots_in_field_names
+from elastalert.utils.util import resolve_string
+from elastalert.utils.util import set_es_key
+from elastalert.utils.util import should_scrolling_continue
 
 
 @pytest.mark.parametrize('spec, expected_delta', [

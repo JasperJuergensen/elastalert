@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import argparse
 import getpass
 import json
@@ -14,7 +13,7 @@ from elasticsearch.client import IndicesClient
 from elasticsearch.exceptions import NotFoundError
 from envparse import Env
 
-from .auth import Auth
+from elastalert.auth import Auth
 
 env = Env(ES_USE_SSL=bool)
 

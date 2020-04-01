@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import collections
 import datetime
 import logging
@@ -6,15 +5,13 @@ import os
 import re
 import sys
 
-import dateutil.parser
 import pytz
 from six import string_types
 
-from . import ElasticSearchClient
-from .auth import Auth
-
-logging.basicConfig()
-elastalert_logger = logging.getLogger('elastalert')
+from elastalert import ElasticSearchClient
+from elastalert.auth import Auth
+from elastalert.exceptions import EAException
+from elastalert.utils.time import total_seconds, ts_now
 
 
 def get_module(module_name):
@@ -140,76 +137,6 @@ def lookup_es_key(lookup_dict, term):
     return None if value_key is None else value_dict[value_key]
 
 
-def ts_to_dt(timestamp):
-    if isinstance(timestamp, datetime.datetime):
-        return timestamp
-    dt = dateutil.parser.parse(timestamp)
-    # Implicitly convert local timestamps to UTC
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=pytz.utc)
-    return dt
-
-
-def dt_to_ts(dt):
-    if not isinstance(dt, datetime.datetime):
-        logging.warning('Expected datetime, got %s' % (type(dt)))
-        return dt
-    ts = dt.isoformat()
-    # Round microseconds to milliseconds
-    if dt.tzinfo is None:
-        # Implicitly convert local times to UTC
-        return ts + 'Z'
-    # isoformat() uses microsecond accuracy and timezone offsets
-    # but we should try to use millisecond accuracy and Z to indicate UTC
-    return ts.replace('000+00:00', 'Z').replace('+00:00', 'Z')
-
-
-def ts_to_dt_with_format(timestamp, ts_format):
-    if isinstance(timestamp, datetime.datetime):
-        return timestamp
-    dt = datetime.datetime.strptime(timestamp, ts_format)
-    # Implicitly convert local timestamps to UTC
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=dateutil.tz.tzutc())
-    return dt
-
-
-def dt_to_ts_with_format(dt, ts_format):
-    if not isinstance(dt, datetime.datetime):
-        logging.warning('Expected datetime, got %s' % (type(dt)))
-        return dt
-    ts = dt.strftime(ts_format)
-    return ts
-
-
-def ts_now():
-    return datetime.datetime.utcnow().replace(tzinfo=dateutil.tz.tzutc())
-
-
-def inc_ts(timestamp, milliseconds=1):
-    """Increment a timestamp by milliseconds."""
-    dt = ts_to_dt(timestamp)
-    dt += datetime.timedelta(milliseconds=milliseconds)
-    return dt_to_ts(dt)
-
-
-def pretty_ts(timestamp, tz=True):
-    """Pretty-format the given timestamp (to be printed or logged hereafter).
-    If tz, the timestamp will be converted to local time.
-    Format: YYYY-MM-DD HH:MM TZ"""
-    dt = timestamp
-    if not isinstance(timestamp, datetime.datetime):
-        dt = ts_to_dt(timestamp)
-    if tz:
-        dt = dt.astimezone(dateutil.tz.tzlocal())
-    return dt.strftime('%Y-%m-%d %H:%M %Z')
-
-
-def ts_add(ts, td):
-    """ Allows a timedelta (td) add operation on a string timestamp (ts) """
-    return dt_to_ts(ts_to_dt(ts) + td)
-
-
 def hashable(obj):
     """ Convert obj to a hashable obj.
     We use the value of some fields from Elasticsearch as keys for dictionaries. This means
@@ -239,47 +166,6 @@ def format_index(index, start, end, add_extra=False):
             indices.add(new_index)
 
     return ','.join(indices)
-
-
-class EAException(Exception):
-    pass
-
-
-def seconds(td):
-    return td.seconds + td.days * 24 * 3600
-
-
-def total_seconds(dt):
-    # For python 2.6 compatability
-    if dt is None:
-        return 0
-    elif hasattr(dt, 'total_seconds'):
-        return dt.total_seconds()
-    else:
-        return (dt.microseconds + (dt.seconds + dt.days * 24 * 3600) * 10**6) / 10**6
-
-
-def dt_to_int(dt):
-    dt = dt.replace(tzinfo=None)
-    return int(total_seconds((dt - datetime.datetime.utcfromtimestamp(0))) * 1000)
-
-
-def unixms_to_dt(ts):
-    return unix_to_dt(float(ts) / 1000)
-
-
-def unix_to_dt(ts):
-    dt = datetime.datetime.utcfromtimestamp(float(ts))
-    dt = dt.replace(tzinfo=dateutil.tz.tzutc())
-    return dt
-
-
-def dt_to_unix(dt):
-    return int(total_seconds(dt - datetime.datetime(1970, 1, 1, tzinfo=dateutil.tz.tzutc())))
-
-
-def dt_to_unixms(dt):
-    return int(dt_to_unix(dt) * 1000)
 
 
 def cronite_datetime_to_timestamp(self, d):

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import datetime
 import logging
 import os
@@ -7,9 +6,8 @@ import mock
 import pytest
 
 import elastalert.elastalert
-import elastalert.util
-from elastalert.util import dt_to_ts
-from elastalert.util import ts_to_dt
+import elastalert.utils.util
+from elastalert.utils.time import ts_to_dt, dt_to_ts
 
 writeback_index = 'wb'
 
@@ -172,7 +170,7 @@ def ea():
             'old_query_limit': datetime.timedelta(weeks=1),
             'disable_rules_on_error': False,
             'scroll_keepalive': '30s'}
-    elastalert.util.elasticsearch_client = mock_es_client
+    elastalert.utils.util.elasticsearch_client = mock_es_client
     conf['rules_loader'] = mock_rule_loader(conf)
     elastalert.elastalert.elasticsearch_client = mock_es_client
     with mock.patch('elastalert.elastalert.load_conf') as load_conf:
@@ -228,7 +226,7 @@ def ea_sixsix():
             'scroll_keepalive': '30s'}
     conf['rules_loader'] = mock_rule_loader(conf)
     elastalert.elastalert.elasticsearch_client = mock_es_sixsix_client
-    elastalert.util.elasticsearch_client = mock_es_sixsix_client
+    elastalert.utils.util.elasticsearch_client = mock_es_sixsix_client
     with mock.patch('elastalert.elastalert.load_conf') as load_conf:
         with mock.patch('elastalert.elastalert.BackgroundScheduler'):
             load_conf.return_value = conf

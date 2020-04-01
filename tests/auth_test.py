@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from elastalert.auth import Auth, RefeshableAWSRequestsAuth
 
 

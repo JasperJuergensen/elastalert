@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 # flake8: noqa
 import os.path
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from .util import EAException
+from elastalert.utils.util import EAException
 
 
 dashboard_temp = {'editable': True,

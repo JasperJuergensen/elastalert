@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 import boto3
 from aws_requests_auth.aws_auth import AWSRequestsAuth

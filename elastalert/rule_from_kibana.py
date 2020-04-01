@@ -1,11 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import json
 
 import yaml
 
 from elastalert.kibana import filters_from_dashboard
-from elastalert.util import elasticsearch_client
+from elastalert.utils.util import elasticsearch_client
 
 
 def main():

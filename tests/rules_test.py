@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import copy
 import datetime
 
@@ -6,11 +5,9 @@ import mock
 import pytest
 
 from elastalert.ruletypes import AnyRule
-from elastalert.ruletypes import BaseAggregationRule
 from elastalert.ruletypes import BlacklistRule
 from elastalert.ruletypes import CardinalityRule
 from elastalert.ruletypes import ChangeRule
-from elastalert.ruletypes import EventWindow
 from elastalert.ruletypes import FlatlineRule
 from elastalert.ruletypes import FrequencyRule
 from elastalert.ruletypes import MetricAggregationRule
@@ -18,10 +15,11 @@ from elastalert.ruletypes import NewTermsRule
 from elastalert.ruletypes import PercentageMatchRule
 from elastalert.ruletypes import SpikeRule
 from elastalert.ruletypes import WhitelistRule
-from elastalert.util import dt_to_ts
-from elastalert.util import EAException
-from elastalert.util import ts_now
-from elastalert.util import ts_to_dt
+from elastalert.ruletypes.base_aggregation_rule import BaseAggregationRule
+from elastalert.utils import EventWindow
+from elastalert.utils.time import ts_to_dt, dt_to_ts
+from elastalert.utils.util import EAException
+from elastalert.utils.util import ts_now
 
 
 def hits(size, **kwargs):
@@ -555,7 +553,7 @@ def test_new_term():
     mock_res = {'aggregations': {'filtered': {'values': {'buckets': [{'key': 'key1', 'doc_count': 1},
                                                                      {'key': 'key2', 'doc_count': 5}]}}}}
 
-    with mock.patch('elastalert.ruletypes.elasticsearch_client') as mock_es:
+    with mock.patch('elastalert.utils.util.elasticsearch_client') as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {'version': {'number': '2.x.x'}}
@@ -607,7 +605,7 @@ def test_new_term():
 
     # Missing_field
     rules['alert_on_missing_field'] = True
-    with mock.patch('elastalert.ruletypes.elasticsearch_client') as mock_es:
+    with mock.patch('elastalert.utils.util.elasticsearch_client') as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {'version': {'number': '2.x.x'}}
@@ -625,7 +623,7 @@ def test_new_term_nested_field():
              'ts_to_dt': ts_to_dt, 'dt_to_ts': dt_to_ts}
     mock_res = {'aggregations': {'filtered': {'values': {'buckets': [{'key': 'key1', 'doc_count': 1},
                                                                      {'key': 'key2', 'doc_count': 5}]}}}}
-    with mock.patch('elastalert.ruletypes.elasticsearch_client') as mock_es:
+    with mock.patch('elastalert.utils.util.elasticsearch_client') as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {'version': {'number': '2.x.x'}}
@@ -650,7 +648,7 @@ def test_new_term_with_terms():
     mock_res = {'aggregations': {'filtered': {'values': {'buckets': [{'key': 'key1', 'doc_count': 1},
                                                                      {'key': 'key2', 'doc_count': 5}]}}}}
 
-    with mock.patch('elastalert.ruletypes.elasticsearch_client') as mock_es:
+    with mock.patch('elastalert.utils.util.elasticsearch_client') as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {'version': {'number': '2.x.x'}}
@@ -720,7 +718,7 @@ def test_new_term_with_composite_fields():
         }
     }
 
-    with mock.patch('elastalert.ruletypes.elasticsearch_client') as mock_es:
+    with mock.patch('elastalert.utils.util.elasticsearch_client') as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {'version': {'number': '2.x.x'}}
@@ -757,7 +755,7 @@ def test_new_term_with_composite_fields():
 
     # Missing_fields
     rules['alert_on_missing_field'] = True
-    with mock.patch('elastalert.ruletypes.elasticsearch_client') as mock_es:
+    with mock.patch('elastalert.utils.util.elasticsearch_client') as mock_es:
         mock_es.return_value = mock.Mock()
         mock_es.return_value.search.return_value = mock_res
         mock_es.return_value.info.return_value = {'version': {'number': '2.x.x'}}

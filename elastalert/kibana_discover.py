@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # flake8: noqa
 import datetime
 import logging
@@ -7,9 +6,8 @@ import os.path
 import prison
 import urllib.parse
 
-from .util import EAException
-from .util import lookup_es_key
-from .util import ts_add
+from elastalert.utils.time import ts_add
+from elastalert.utils.util import lookup_es_key
 
 kibana_default_timedelta = datetime.timedelta(minutes=10)
 

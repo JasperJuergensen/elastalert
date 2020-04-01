@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import base64
 import datetime
 import json
@@ -8,23 +7,23 @@ import mock
 import pytest
 from jira.exceptions import JIRAError
 
-from elastalert.alerts import AlertaAlerter
-from elastalert.alerts import Alerter
-from elastalert.alerts import BasicMatchString
-from elastalert.alerts import CommandAlerter
-from elastalert.alerts import EmailAlerter
-from elastalert.alerts import HipChatAlerter
-from elastalert.alerts import HTTPPostAlerter
-from elastalert.alerts import JiraAlerter
-from elastalert.alerts import JiraFormattedMatchString
-from elastalert.alerts import MsTeamsAlerter
-from elastalert.alerts import PagerDutyAlerter
-from elastalert.alerts import SlackAlerter
-from elastalert.alerts import StrideAlerter
+from elastalert.alerter import AlertaAlerter
+from elastalert.alerter.match_string import BasicMatchString
+from elastalert.alerter import CommandAlerter
+from elastalert.alerter import EmailAlerter
+from elastalert.alerter import HipChatAlerter
+from elastalert.alerter import HTTPPostAlerter
+from elastalert.alerter import JiraAlerter
+from elastalert.alerter import MsTeamsAlerter
+from elastalert.alerter import PagerDutyAlerter
+from elastalert.alerter import SlackAlerter
+from elastalert.alerter import StrideAlerter
+from elastalert.alerter.jira_alerter import JiraFormattedMatchString
+from elastalert.alerter import OpsGenieAlerter
+from elastalert.alerter.test_alerter import TestAlerter
 from elastalert.loaders import FileRulesLoader
-from elastalert.opsgenie import OpsGenieAlerter
-from elastalert.util import ts_add
-from elastalert.util import ts_now
+from elastalert.utils.time import ts_add
+from elastalert.utils.util import ts_now
 
 
 class mock_rule:
@@ -96,7 +95,7 @@ def test_email():
     rule = {'name': 'test alert', 'email': ['testing@test.test', 'test@test.test'], 'from_addr': 'testfrom@test.test',
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com', 'owner': 'owner_value',
             'alert_subject': 'Test alert for {0}, owned by {1}', 'alert_subject_args': ['test_term', 'owner'], 'snowman': '☃'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
 
         alert = EmailAlerter(rule)
@@ -121,7 +120,7 @@ def test_email_from_field():
     rule = {'name': 'test alert', 'email': ['testing@test.test'], 'email_add_domain': 'example.com',
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_from_field': 'data.user', 'owner': 'owner_value'}
     # Found, without @
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
         alert = EmailAlerter(rule)
         alert.alert([{'data': {'user': 'qlo'}}])
@@ -129,28 +128,28 @@ def test_email_from_field():
 
     # Found, with @
     rule['email_add_domain'] = '@example.com'
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
         alert = EmailAlerter(rule)
         alert.alert([{'data': {'user': 'qlo'}}])
         assert mock_smtp.mock_calls[4][1][1] == ['qlo@example.com']
 
     # Found, list
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
         alert = EmailAlerter(rule)
         alert.alert([{'data': {'user': ['qlo', 'foo']}}])
         assert mock_smtp.mock_calls[4][1][1] == ['qlo@example.com', 'foo@example.com']
 
     # Not found
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
         alert = EmailAlerter(rule)
         alert.alert([{'data': {'foo': 'qlo'}}])
         assert mock_smtp.mock_calls[4][1][1] == ['testing@test.test']
 
     # Found, wrong type
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
         alert = EmailAlerter(rule)
         alert.alert([{'data': {'user': 17}}])
@@ -161,7 +160,7 @@ def test_email_with_unicode_strings():
     rule = {'name': 'test alert', 'email': 'testing@test.test', 'from_addr': 'testfrom@test.test',
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com', 'owner': 'owner_value',
             'alert_subject': 'Test alert for {0}, owned by {1}', 'alert_subject_args': ['test_term', 'owner'], 'snowman': '☃'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
 
         alert = EmailAlerter(rule)
@@ -187,8 +186,8 @@ def test_email_with_auth():
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com',
             'alert_subject': 'Test alert for {0}', 'alert_subject_args': ['test_term'], 'smtp_auth_file': 'file.txt',
             'rule_file': '/tmp/foo.yaml'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
-        with mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
+        with mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
             mock_open.return_value = {'user': 'someone', 'password': 'hunter2'}
             mock_smtp.return_value = mock.Mock()
             alert = EmailAlerter(rule)
@@ -209,8 +208,8 @@ def test_email_with_cert_key():
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com',
             'alert_subject': 'Test alert for {0}', 'alert_subject_args': ['test_term'], 'smtp_auth_file': 'file.txt',
             'smtp_cert_file': 'dummy/cert.crt', 'smtp_key_file': 'dummy/client.key', 'rule_file': '/tmp/foo.yaml'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
-        with mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
+        with mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
             mock_open.return_value = {'user': 'someone', 'password': 'hunter2'}
             mock_smtp.return_value = mock.Mock()
             alert = EmailAlerter(rule)
@@ -230,7 +229,7 @@ def test_email_with_cc():
     rule = {'name': 'test alert', 'email': ['testing@test.test', 'test@test.test'], 'from_addr': 'testfrom@test.test',
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com',
             'cc': 'tester@testing.testing'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
 
         alert = EmailAlerter(rule)
@@ -255,7 +254,7 @@ def test_email_with_bcc():
     rule = {'name': 'test alert', 'email': ['testing@test.test', 'test@test.test'], 'from_addr': 'testfrom@test.test',
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com',
             'bcc': 'tester@testing.testing'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
 
         alert = EmailAlerter(rule)
@@ -280,7 +279,7 @@ def test_email_with_cc_and_bcc():
     rule = {'name': 'test alert', 'email': ['testing@test.test', 'test@test.test'], 'from_addr': 'testfrom@test.test',
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com',
             'cc': ['test1@test.com', 'test2@test.com'], 'bcc': 'tester@testing.testing'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
 
         alert = EmailAlerter(rule)
@@ -325,7 +324,7 @@ def test_email_with_args():
         'alert_text_args': ['test_arg1', 'test_arg2', 'test.arg3'],
         'alert_missing_value': '<CUSTOM MISSING VALUE>'
     }
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
 
         alert = EmailAlerter(rule)
@@ -356,7 +355,7 @@ def test_email_query_key_in_subject():
     rule = {'name': 'test alert', 'email': ['testing@test.test', 'test@test.test'],
             'type': mock_rule(), 'timestamp_field': '@timestamp', 'email_reply_to': 'test@example.com',
             'query_key': 'username'}
-    with mock.patch('elastalert.alerts.SMTP') as mock_smtp:
+    with mock.patch('elastalert.alerter.email_alerter.SMTP') as mock_smtp:
         mock_smtp.return_value = mock.Mock()
 
         alert = EmailAlerter(rule)
@@ -733,8 +732,8 @@ def test_jira():
 
     mock_priority = mock.Mock(id='5')
 
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value.priorities.return_value = [mock_priority]
         mock_jira.return_value.fields.return_value = []
@@ -764,8 +763,8 @@ def test_jira():
 
     # Search called if jira_bump_tickets
     rule['jira_bump_tickets'] = True
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value = mock.Mock()
         mock_jira.return_value.search_issues.return_value = []
@@ -780,8 +779,8 @@ def test_jira():
 
     # Remove a field if jira_ignore_in_title set
     rule['jira_ignore_in_title'] = 'test_term'
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value = mock.Mock()
         mock_jira.return_value.search_issues.return_value = []
@@ -794,8 +793,8 @@ def test_jira():
     assert 'test_value' not in mock_jira.mock_calls[3][1][0]
 
     # Issue is still created if search_issues throws an exception
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value = mock.Mock()
         mock_jira.return_value.search_issues.side_effect = JIRAError
@@ -813,8 +812,8 @@ def test_jira():
 
     # Check ticket is bumped if it is updated 4 days ago
     mock_issue.fields.updated = str(ts_now() - datetime.timedelta(days=4))
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value = mock.Mock()
         mock_jira.return_value.search_issues.return_value = [mock_issue]
@@ -829,8 +828,8 @@ def test_jira():
 
     # Check ticket is bumped is not bumped if ticket is updated right now
     mock_issue.fields.updated = str(ts_now())
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value = mock.Mock()
         mock_jira.return_value.search_issues.return_value = [mock_issue]
@@ -864,8 +863,8 @@ def test_jira():
         mock_fields = [
             {'name': 'affected user', 'id': 'affected_user_id', 'schema': {'type': 'string'}}
         ]
-        with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-                mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+        with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+                mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
             mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
             mock_jira.return_value = mock.Mock()
             mock_jira.return_value.search_issues.return_value = [mock_issue]
@@ -937,8 +936,8 @@ def test_jira_arbitrary_field_support():
         },
     ]
 
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value.priorities.return_value = [mock_priority]
         mock_jira.return_value.fields.return_value = mock_fields
@@ -978,8 +977,8 @@ def test_jira_arbitrary_field_support():
     # Reference an arbitrary string field that is not defined on the JIRA server
     rule['jira_nonexistent_field'] = 'nonexistent field value'
 
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value.priorities.return_value = [mock_priority]
         mock_jira.return_value.fields.return_value = mock_fields
@@ -994,8 +993,8 @@ def test_jira_arbitrary_field_support():
     # Reference a watcher that does not exist
     rule['jira_watchers'] = 'invalid_watcher'
 
-    with mock.patch('elastalert.alerts.JIRA') as mock_jira, \
-            mock.patch('elastalert.alerts.yaml_loader') as mock_open:
+    with mock.patch('elastalert.alerter.jira_alerter.JIRA') as mock_jira, \
+            mock.patch('elastalert.alerter.alerter.yaml_loader') as mock_open:
         mock_open.return_value = {'user': 'jirauser', 'password': 'jirapassword'}
         mock_jira.return_value.priorities.return_value = [mock_priority]
         mock_jira.return_value.fields.return_value = mock_fields
@@ -1054,47 +1053,47 @@ def test_command():
     match = {'@timestamp': '2014-01-01T00:00:00',
              'somefield': 'foobarbaz',
              'nested': {'field': 1}}
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         alert.alert([match])
     assert mock_popen.called_with(['/bin/test', '--arg', 'foobarbaz'], stdin=subprocess.PIPE, shell=False)
 
     # Test command as string with formatted arg (old-style string format)
     rule = {'command': '/bin/test/ --arg %(somefield)s'}
     alert = CommandAlerter(rule)
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         alert.alert([match])
     assert mock_popen.called_with('/bin/test --arg foobarbaz', stdin=subprocess.PIPE, shell=False)
 
     # Test command as string without formatted arg (old-style string format)
     rule = {'command': '/bin/test/foo.sh'}
     alert = CommandAlerter(rule)
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         alert.alert([match])
     assert mock_popen.called_with('/bin/test/foo.sh', stdin=subprocess.PIPE, shell=True)
 
     # Test command as string with formatted arg (new-style string format)
     rule = {'command': '/bin/test/ --arg {match[somefield]}', 'new_style_string_format': True}
     alert = CommandAlerter(rule)
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         alert.alert([match])
     assert mock_popen.called_with('/bin/test --arg foobarbaz', stdin=subprocess.PIPE, shell=False)
 
     rule = {'command': '/bin/test/ --arg {match[nested][field]}', 'new_style_string_format': True}
     alert = CommandAlerter(rule)
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         alert.alert([match])
     assert mock_popen.called_with('/bin/test --arg 1', stdin=subprocess.PIPE, shell=False)
 
     # Test command as string without formatted arg (new-style string format)
     rule = {'command': '/bin/test/foo.sh', 'new_style_string_format': True}
     alert = CommandAlerter(rule)
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         alert.alert([match])
     assert mock_popen.called_with('/bin/test/foo.sh', stdin=subprocess.PIPE, shell=True)
 
     rule = {'command': '/bin/test/foo.sh {{bar}}', 'new_style_string_format': True}
     alert = CommandAlerter(rule)
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         alert.alert([match])
     assert mock_popen.called_with('/bin/test/foo.sh {bar}', stdin=subprocess.PIPE, shell=True)
 
@@ -1104,7 +1103,7 @@ def test_command():
     alert = CommandAlerter(rule)
     match = {'@timestamp': '2014-01-01T00:00:00',
              'somefield': 'foobarbaz'}
-    with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+    with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
         mock_subprocess = mock.Mock()
         mock_popen.return_value = mock_subprocess
         mock_subprocess.communicate.return_value = (None, None)
@@ -1119,7 +1118,7 @@ def test_command():
     match = {'@timestamp': '2014-01-01T00:00:00',
              'somefield': 'foobarbaz'}
     with pytest.raises(Exception) as exception:
-        with mock.patch("elastalert.alerts.subprocess.Popen") as mock_popen:
+        with mock.patch("elastalert.alerter.command_alerter.subprocess.Popen") as mock_popen:
             mock_subprocess = mock.Mock()
             mock_popen.return_value = mock_subprocess
             mock_subprocess.wait.return_value = 1
@@ -2077,7 +2076,7 @@ def test_resolving_rule_references(ea):
         'resolved_int_reference': '$priority$',
         'unresolved_reference': '$foo$',
     }
-    alert = Alerter(rule)
+    alert = TestAlerter(rule)
     assert 'the_owner' == alert.rule['resolved_string_reference']
     assert 2 == alert.rule['resolved_int_reference']
     assert '$foo$' == alert.rule['unresolved_reference']
@@ -2593,7 +2592,7 @@ def test_alert_subject_size_limit_no_args(ea):
         'alert_subject': 'A very long subject',
         'alert_subject_max_len': 5
     }
-    alert = Alerter(rule)
+    alert = TestAlerter(rule)
     alertSubject = alert.create_custom_title([{'test_term': 'test_value', '@timestamp': '2014-10-31T00:00:00'}])
     assert 5 == len(alertSubject)
 
@@ -2608,6 +2607,6 @@ def test_alert_subject_size_limit_with_args(ea):
         'alert_subject_args': ['test_term', 'test.term'],
         'alert_subject_max_len': 6
     }
-    alert = Alerter(rule)
+    alert = TestAlerter(rule)
     alertSubject = alert.create_custom_title([{'test_term': 'test_value', '@timestamp': '2014-10-31T00:00:00'}])
     assert 6 == len(alertSubject)

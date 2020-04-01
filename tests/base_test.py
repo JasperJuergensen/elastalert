@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import copy
 import datetime
 import json
@@ -10,16 +9,12 @@ import pytest
 from elasticsearch.exceptions import ConnectionError
 from elasticsearch.exceptions import ElasticsearchException
 
-from elastalert.enhancements import BaseEnhancement
-from elastalert.enhancements import DropMatchException
+from elastalert.enhancements.test_enhancement import TestEnhancement
+from elastalert.enhancements.drop_match_exception import DropMatchException
 from elastalert.kibana import dashboard_temp
-from elastalert.util import dt_to_ts
-from elastalert.util import dt_to_unix
-from elastalert.util import dt_to_unixms
-from elastalert.util import EAException
-from elastalert.util import ts_now
-from elastalert.util import ts_to_dt
-from elastalert.util import unix_to_dt
+from elastalert.utils.time import ts_to_dt, dt_to_unix, dt_to_unixms, unix_to_dt, dt_to_ts
+from elastalert.utils.util import EAException
+from elastalert.utils.util import ts_now
 
 START_TIMESTAMP = '2014-09-26T12:34:45Z'
 END_TIMESTAMP = '2014-09-27T12:34:45Z'
@@ -307,7 +302,7 @@ def test_query_exception_count_query(ea):
 
 
 def test_match_with_module(ea):
-    mod = BaseEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules[0])
     mod.process = mock.Mock()
     ea.rules[0]['match_enhancements'] = [mod]
     test_match(ea)
@@ -315,7 +310,7 @@ def test_match_with_module(ea):
 
 
 def test_match_with_module_from_pending(ea):
-    mod = BaseEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules[0])
     mod.process = mock.Mock()
     ea.rules[0]['match_enhancements'] = [mod]
     ea.rules[0].pop('aggregation')
@@ -338,7 +333,7 @@ def test_match_with_module_from_pending(ea):
 
 
 def test_match_with_module_with_agg(ea):
-    mod = BaseEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules[0])
     mod.process = mock.Mock()
     ea.rules[0]['match_enhancements'] = [mod]
     ea.rules[0]['aggregation'] = datetime.timedelta(minutes=15)
@@ -351,7 +346,7 @@ def test_match_with_module_with_agg(ea):
 
 
 def test_match_with_enhancements_first(ea):
-    mod = BaseEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules[0])
     mod.process = mock.Mock()
     ea.rules[0]['match_enhancements'] = [mod]
     ea.rules[0]['aggregation'] = datetime.timedelta(minutes=15)

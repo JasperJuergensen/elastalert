@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import datetime
 import logging
 import logging.config
@@ -7,9 +6,10 @@ from envparse import Env
 from staticconf.loader import yaml_loader
 
 from . import loaders
-from .util import EAException
-from .util import elastalert_logger
-from .util import get_module
+from elastalert.utils.util import EAException
+from elastalert.utils.util import get_module
+
+log = logging.getLogger(__name__)
 
 # Required global (config.yaml) configuration options
 required_globals = frozenset(['run_every', 'es_host', 'es_port', 'writeback_index', 'buffer_time'])
@@ -111,18 +111,18 @@ def configure_logging(args, conf):
         logging.config.dictConfig(conf['logging'])
 
     if args.verbose and args.debug:
-        elastalert_logger.info(
+        log.info(
             "Note: --debug and --verbose flags are set. --debug takes precedent."
         )
 
     # re-enable INFO log level on elastalert_logger in verbose/debug mode
     # (but don't touch it if it is already set to INFO or below by config)
     if args.verbose or args.debug:
-        if elastalert_logger.level > logging.INFO or elastalert_logger.level == logging.NOTSET:
-            elastalert_logger.setLevel(logging.INFO)
+        if log.level > logging.INFO or log.level == logging.NOTSET:
+            log.setLevel(logging.INFO)
 
     if args.debug:
-        elastalert_logger.info(
+        log.info(
             """Note: In debug mode, alerts will be logged to console but NOT actually sent.
             To send them but remain verbose, use --verbose instead."""
         )

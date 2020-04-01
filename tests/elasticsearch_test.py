@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import datetime
 import json
 import time
@@ -9,8 +8,7 @@ import pytest
 import elastalert.create_index
 import elastalert.elastalert
 from elastalert import ElasticSearchClient
-from elastalert.util import build_es_conn_config
-from tests.conftest import ea  # noqa: F401
+from elastalert.utils.util import build_es_conn_config
 
 test_index = 'test_index'
 

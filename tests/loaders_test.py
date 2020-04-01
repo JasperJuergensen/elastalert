@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import copy
 import datetime
 import os
@@ -6,11 +5,11 @@ import os
 import mock
 import pytest
 
-import elastalert.alerts
+import elastalert.alerter
 import elastalert.ruletypes
 from elastalert.config import load_conf
 from elastalert.loaders import FileRulesLoader
-from elastalert.util import EAException
+from elastalert.utils.util import EAException
 
 test_config = {'rules_folder': 'test_folder',
                'run_every': {'minutes': 10},
@@ -62,12 +61,12 @@ def test_import_rules():
         # Test that alerts are imported
         test_rule_copy = copy.deepcopy(test_rule)
         mock_open.return_value = test_rule_copy
-        test_rule_copy['alert'] = 'testing2.test2.Alerter'
+        test_rule_copy['alert'] = 'testing2.test2.TestAlerter'
         with mock.patch('builtins.__import__') as mock_import:
-            mock_import.return_value = elastalert.alerts
+            mock_import.return_value = elastalert.alerter.test_alerter
             rules_loader.load_configuration('test_config', test_config)
         assert mock_import.call_args_list[0][0][0] == 'testing2.test2'
-        assert mock_import.call_args_list[0][0][3] == ['Alerter']
+        assert mock_import.call_args_list[0][0][3] == ['TestAlerter']
 
 
 def test_import_import():
@@ -160,8 +159,8 @@ def test_load_inline_alert_rule():
     with mock.patch.object(rules_loader, 'get_yaml') as mock_open:
         mock_open.side_effect = [test_config_copy, test_rule_copy]
         rules_loader.load_modules(test_rule_copy)
-        assert isinstance(test_rule_copy['alert'][0], elastalert.alerts.EmailAlerter)
-        assert isinstance(test_rule_copy['alert'][1], elastalert.alerts.EmailAlerter)
+        assert isinstance(test_rule_copy['alert'][0], elastalert.alerter.EmailAlerter)
+        assert isinstance(test_rule_copy['alert'][1], elastalert.alerter.EmailAlerter)
         assert 'foo@bar.baz' in test_rule_copy['alert'][0].rule['email']
         assert 'baz@foo.bar' in test_rule_copy['alert'][1].rule['email']
 
@@ -209,7 +208,7 @@ def test_load_rules():
     test_config_copy = copy.deepcopy(test_config)
     with mock.patch('elastalert.config.yaml_loader') as mock_conf_open:
         mock_conf_open.return_value = test_config_copy
-        with mock.patch('elastalert.loaders.yaml_loader') as mock_rule_open:
+        with mock.patch('elastalert.loaders.file_rules_loader.yaml_loader') as mock_rule_open:
             mock_rule_open.return_value = test_rule_copy
 
             with mock.patch('os.walk') as mock_ls:
@@ -217,7 +216,7 @@ def test_load_rules():
                 rules = load_conf(test_args)
                 rules['rules'] = rules['rules_loader'].load(rules)
                 assert isinstance(rules['rules'][0]['type'], elastalert.ruletypes.RuleType)
-                assert isinstance(rules['rules'][0]['alert'][0], elastalert.alerts.Alerter)
+                assert isinstance(rules['rules'][0]['alert'][0], elastalert.alerter.Alerter)
                 assert isinstance(rules['rules'][0]['timeframe'], datetime.timedelta)
                 assert isinstance(rules['run_every'], datetime.timedelta)
                 for included_key in ['comparekey', 'testkey', '@timestamp']:
@@ -235,7 +234,7 @@ def test_load_default_host_port():
     test_config_copy = copy.deepcopy(test_config)
     with mock.patch('elastalert.config.yaml_loader') as mock_conf_open:
         mock_conf_open.return_value = test_config_copy
-        with mock.patch('elastalert.loaders.yaml_loader') as mock_rule_open:
+        with mock.patch('elastalert.loaders.file_rules_loader.yaml_loader') as mock_rule_open:
             mock_rule_open.return_value = test_rule_copy
 
             with mock.patch('os.walk') as mock_ls:
@@ -255,7 +254,7 @@ def test_load_ssl_env_false():
     test_config_copy = copy.deepcopy(test_config)
     with mock.patch('elastalert.config.yaml_loader') as mock_conf_open:
         mock_conf_open.return_value = test_config_copy
-        with mock.patch('elastalert.loaders.yaml_loader') as mock_rule_open:
+        with mock.patch('elastalert.loaders.file_rules_loader.yaml_loader') as mock_rule_open:
             mock_rule_open.return_value = test_rule_copy
 
             with mock.patch('os.listdir') as mock_ls:
@@ -274,7 +273,7 @@ def test_load_ssl_env_true():
     test_config_copy = copy.deepcopy(test_config)
     with mock.patch('elastalert.config.yaml_loader') as mock_conf_open:
         mock_conf_open.return_value = test_config_copy
-        with mock.patch('elastalert.loaders.yaml_loader') as mock_rule_open:
+        with mock.patch('elastalert.loaders.file_rules_loader.yaml_loader') as mock_rule_open:
             mock_rule_open.return_value = test_rule_copy
 
             with mock.patch('os.listdir') as mock_ls:
@@ -293,7 +292,7 @@ def test_load_url_prefix_env():
     test_config_copy = copy.deepcopy(test_config)
     with mock.patch('elastalert.config.yaml_loader') as mock_conf_open:
         mock_conf_open.return_value = test_config_copy
-        with mock.patch('elastalert.loaders.yaml_loader') as mock_rule_open:
+        with mock.patch('elastalert.loaders.file_rules_loader.yaml_loader') as mock_rule_open:
             mock_rule_open.return_value = test_rule_copy
 
             with mock.patch('os.listdir') as mock_ls:
@@ -311,7 +310,7 @@ def test_load_disabled_rules():
     test_config_copy = copy.deepcopy(test_config)
     with mock.patch('elastalert.config.yaml_loader') as mock_conf_open:
         mock_conf_open.return_value = test_config_copy
-        with mock.patch('elastalert.loaders.yaml_loader') as mock_rule_open:
+        with mock.patch('elastalert.loaders.file_rules_loader.yaml_loader') as mock_rule_open:
             mock_rule_open.return_value = test_rule_copy
 
             with mock.patch('os.listdir') as mock_ls:
@@ -336,7 +335,7 @@ def test_raises_on_missing_config():
 
         with mock.patch('elastalert.config.yaml_loader') as mock_conf_open:
             mock_conf_open.return_value = test_config_copy
-            with mock.patch('elastalert.loaders.yaml_loader') as mock_rule_open:
+            with mock.patch('elastalert.loaders.file_rules_loader.yaml_loader') as mock_rule_open:
                 mock_rule_open.return_value = test_rule_copy
                 with mock.patch('os.walk') as mock_walk:
                     mock_walk.return_value = [('', [], ['testrule.yaml'])]

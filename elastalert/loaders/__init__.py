@@ -1,0 +1,2 @@
+from elastalert.loaders.rules_loader import RulesLoader
+from elastalert.loaders.file_rules_loader import FileRulesLoader

@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*-
 import json
 import logging
 import os.path
 import requests
 
-from .alerts import Alerter
-from .alerts import BasicMatchString
-from .util import EAException
-from .util import elastalert_logger
-from .util import lookup_es_key
+from elastalert.alerter import Alerter
+from elastalert.alerter.match_string import BasicMatchString
+from elastalert.utils.util import EAException
+from elastalert.utils.util import lookup_es_key
+
+log = logging.getLogger(__name__)
 
 
 class OpsGenieAlerter(Alerter):
@@ -46,11 +46,11 @@ class OpsGenieAlerter(Alerter):
                 try:
                     formated_responders.append(responder.format(**responders_values))
                 except KeyError as error:
-                    logging.warn("OpsGenieAlerter: Cannot create responder for OpsGenie Alert. Key not foud: %s. " % (error))
+                    log.warn("OpsGenieAlerter: Cannot create responder for OpsGenie Alert. Key not foud: %s. " % (error))
             if not formated_responders:
-                logging.warn("OpsGenieAlerter: no responders can be formed. Trying the default responder ")
+                log.warn("OpsGenieAlerter: no responders can be formed. Trying the default responder ")
                 if not default_responders:
-                    logging.warn("OpsGenieAlerter: default responder not set. Falling back")
+                    log.warn("OpsGenieAlerter: default responder not set. Falling back")
                     formated_responders = responders
                 else:
                     formated_responders = default_responders
@@ -90,7 +90,7 @@ class OpsGenieAlerter(Alerter):
         post['tags'] = self.tags
 
         if self.priority and self.priority not in ('P1', 'P2', 'P3', 'P4', 'P5'):
-            logging.warn("Priority level does not appear to be specified correctly. \
+            log.warn("Priority level does not appear to be specified correctly. \
                          Please make sure to set it to a value between P1 and P5")
         else:
             post['priority'] = self.priority
@@ -102,7 +102,7 @@ class OpsGenieAlerter(Alerter):
         if details:
             post['details'] = details
 
-        logging.debug(json.dumps(post))
+        log.debug(json.dumps(post))
 
         headers = {
             'Content-Type': 'application/json',
@@ -114,12 +114,12 @@ class OpsGenieAlerter(Alerter):
         try:
             r = requests.post(self.to_addr, json=post, headers=headers, proxies=proxies)
 
-            logging.debug('request response: {0}'.format(r))
+            log.debug('request response: {0}'.format(r))
             if r.status_code != 202:
-                elastalert_logger.info("Error response from {0} \n "
+                log.info("Error response from {0} \n "
                                        "API Response: {1}".format(self.to_addr, r))
                 r.raise_for_status()
-            logging.info("Alert sent to OpsGenie")
+            log.info("Alert sent to OpsGenie")
         except Exception as err:
             raise EAException("Error sending alert: {0}".format(err))
 
