@@ -163,9 +163,10 @@ def format_index(index, start, end, add_extra=False):
         while len(indices) == num:
             original_start -= datetime.timedelta(days=1)
             new_index = original_start.strftime(index)
-            assert (
-                new_index != index
-            ), "You cannot use a static index with search_extra_index"
+            if new_index == index:
+                raise EAException(
+                    "You cannot use a static index with search_extra_index"
+                )
             indices.add(new_index)
 
     return ",".join(indices)
