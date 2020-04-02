@@ -2,11 +2,10 @@ import datetime
 import logging
 import logging.config
 
+from elastalert import loaders
 from elastalert.utils.util import EAException, get_module
 from envparse import Env
 from staticconf.loader import yaml_loader
-
-from . import loaders
 
 log = logging.getLogger(__name__)
 
@@ -41,29 +40,28 @@ def load_conf(args, defaults=None, overwrites=None):
         :param overwrites: Dictionary of conf values to override
         :return: The global configuration, a dictionary.
         """
-    filename = args.config
-    if filename:
+    filename = args.config or "config.yaml"
+    try:
         conf = yaml_loader(filename)
-    else:
-        try:
-            conf = yaml_loader("config.yaml")
-        except FileNotFoundError:
-            raise EAException("No --config or config.yaml found")
+    except FileNotFoundError:
+        raise EAException("Config file '{}' not found".format(filename))
 
     # init logging from config and set log levels according to command line options
     configure_logging(args, conf)
 
-    for env_var, conf_var in list(env_settings.items()):
+    for env_var, conf_var in env_settings.items():
         val = env(env_var, None)
         if val is not None:
             conf[conf_var] = val
 
-    for key, value in iter(defaults.items()) if defaults is not None else []:
-        if key not in conf:
-            conf[key] = value
+    if defaults is not None:
+        for key, value in defaults.items():
+            if key not in conf:
+                conf[key] = value
 
-    for key, value in iter(overwrites.items()) if overwrites is not None else []:
-        conf[key] = value
+    if overwrites is not None:
+        for key, value in overwrites.items():
+            conf[key] = value
 
     # Make sure we have all required globals
     if required_globals - frozenset(list(conf.keys())):
@@ -79,19 +77,15 @@ def load_conf(args, defaults=None, overwrites=None):
     conf.setdefault("disable_rules_on_error", True)
     conf.setdefault("scan_subdirectories", True)
     conf.setdefault("rules_loader", "file")
+    conf.setdefault("alert_time_limit", {"days": 2})
+    conf.setdefault("old_query_limit", {"weeks": 1})
 
     # Convert run_every, buffer_time into a timedelta object
     try:
         conf["run_every"] = datetime.timedelta(**conf["run_every"])
         conf["buffer_time"] = datetime.timedelta(**conf["buffer_time"])
-        if "alert_time_limit" in conf:
-            conf["alert_time_limit"] = datetime.timedelta(**conf["alert_time_limit"])
-        else:
-            conf["alert_time_limit"] = datetime.timedelta(days=2)
-        if "old_query_limit" in conf:
-            conf["old_query_limit"] = datetime.timedelta(**conf["old_query_limit"])
-        else:
-            conf["old_query_limit"] = datetime.timedelta(weeks=1)
+        conf["alert_time_limit"] = datetime.timedelta(**conf["alert_time_limit"])
+        conf["old_query_limit"] = datetime.timedelta(**conf["old_query_limit"])
     except (KeyError, TypeError) as e:
         raise EAException("Invalid time format used: %s" % e)
 
@@ -128,7 +122,7 @@ def configure_logging(args, conf):
     # (but don't touch it if it is already set to INFO or below by config)
     if args.verbose or args.debug:
         if log.level > logging.INFO or log.level == logging.NOTSET:
-            log.setLevel(logging.INFO)
+            logging.getLogger("elastalert").setLevel(logging.INFO)
 
     if args.debug:
         log.info(
