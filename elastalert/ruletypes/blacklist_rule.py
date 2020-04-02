@@ -8,7 +8,7 @@ class BlacklistRule(CompareRule):
     required_options = frozenset(["compare_key", "blacklist"])
 
     def __init__(self, rules, args=None):
-        super(BlacklistRule, self).__init__(rules, args=None)
+        super(BlacklistRule, self).__init__(rules)
         self.expand_entries("blacklist")
 
     def compare(self, event):

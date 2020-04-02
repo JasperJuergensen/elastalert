@@ -1,10 +1,12 @@
 import copy
 from abc import ABCMeta
 
+from deprecated import deprecated
+from elastalert.rule import Rule
 from elastalert.utils.time import dt_to_ts
 
 
-class RuleType(metaclass=ABCMeta):
+class RuleType(Rule, metaclass=ABCMeta):
     """ The base class for a rule type.
     The class must implement add_data and add any matches to self.matches.
 
@@ -13,15 +15,17 @@ class RuleType(metaclass=ABCMeta):
 
     required_options = frozenset()
 
-    def __init__(self, rules, args=None):
+    def __init__(self, rule_config, args=None):
+        super().__init__(rule_config)
         self.matches = []
-        self.rules = rules
+        self.rules = self.rule_config
         self.occurrences = {}
         self.rules["category"] = self.rules.get("category", "")
         self.rules["description"] = self.rules.get("description", "")
         self.rules["owner"] = self.rules.get("owner", "")
         self.rules["priority"] = self.rules.get("priority", "2")
 
+    @deprecated
     def add_data(self, data):
         """ The function that the ElastAlert client calls with results from ES.
         Data is a list of dictionaries, from Elasticsearch.
@@ -61,6 +65,7 @@ class RuleType(metaclass=ABCMeta):
         """
         pass
 
+    @deprecated
     def add_count_data(self, counts):
         """ Gets called when a rule has use_count_query set to True. Called to add data from querying to the rule.
 
@@ -68,12 +73,14 @@ class RuleType(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
+    @deprecated
     def add_terms_data(self, terms):
         """ Gets called when a rule has use_terms_query set to True.
 
         :param terms: A list of buckets with a key, corresponding to query_key, and the count """
         raise NotImplementedError()
 
+    @deprecated
     def add_aggregation_data(self, payload):
         """ Gets called when a rule has use_terms_query set to True.
         :param terms: A list of buckets with a key, corresponding to query_key, and the count """

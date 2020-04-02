@@ -26,7 +26,7 @@ def ts_to_dt(timestamp):
     return dt
 
 
-def dt_to_ts(dt):
+def dt_to_ts(dt: datetime.datetime) -> str:
     if not isinstance(dt, datetime.datetime):
         log.warning("Expected datetime, got %s" % (type(dt)))
         return dt
@@ -58,7 +58,7 @@ def dt_to_ts_with_format(dt, ts_format):
     return ts
 
 
-def ts_now():
+def ts_now() -> datetime.datetime:
     return datetime.datetime.utcnow().replace(tzinfo=dateutil.tz.tzutc())
 
 

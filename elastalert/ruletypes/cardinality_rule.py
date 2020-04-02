@@ -1,4 +1,6 @@
 from elastalert.exceptions import EAException
+from elastalert.queries.elasticsearch_query import ElasticsearchQuery
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_to_dt
 from elastalert.utils.util import hashable, lookup_es_key
@@ -11,6 +13,7 @@ class CardinalityRule(RuleType):
 
     def __init__(self, *args):
         super(CardinalityRule, self).__init__(*args)
+        self.query_factory = QueryFactory(ElasticsearchQuery, args[0], self.add_data)
         if "max_cardinality" not in self.rules and "min_cardinality" not in self.rules:
             raise EAException(
                 "CardinalityRule must have one of either max_cardinality or min_cardinality"

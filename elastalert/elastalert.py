@@ -153,36 +153,12 @@ class ElastAlerter(object):
     def __init__(self, args):
         self.es_clients = {}
         self.parse_args(args)
-        self.debug = self.args.debug
-        self.verbose = self.args.verbose
-
-        if self.verbose and self.debug:
-            log.info(
-                "Note: --debug and --verbose flags are set. --debug takes precedent."
-            )
-
-        if self.verbose or self.debug:
-            log.setLevel(logging.INFO)
-
-        if self.debug:
-            log.info(
-                """Note: In debug mode, alerts will be logged to console but NOT actually sent.
-                To send them but remain verbose, use --verbose instead."""
-            )
-
-        if not self.args.es_debug:
-            logging.getLogger("elasticsearch").setLevel(logging.WARNING)
-
-        if self.args.es_debug_trace:
-            tracer = logging.getLogger("elasticsearch.trace")
-            tracer.setLevel(logging.INFO)
-            tracer.addHandler(logging.FileHandler(self.args.es_debug_trace))
 
         self.conf = load_conf(self.args)
         self.rules_loader = self.conf["rules_loader"]
         self.rules = self.rules_loader.load(self.conf, self.args)
 
-        print(len(self.rules), "rules loaded")
+        log.info("{} rules loaded".format(len(self.rules)))
 
         self.max_query_size = self.conf["max_query_size"]
         self.scroll_keepalive = self.conf["scroll_keepalive"]
@@ -2076,7 +2052,7 @@ class ElastAlerter(object):
 
         # XXX if there are more than self.max_aggregation matches, you have big alerts and we will leave entries in ES.
         query = {
-            "query": {"query_string": {"query": "aggregate_id:%s" % (_id)}},
+            "query": {"query_string": {"query": "aggregate_id:'%s'" % (_id)}},
             "sort": {"@timestamp": "asc"},
         }
         matches = []
