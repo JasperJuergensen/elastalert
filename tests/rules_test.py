@@ -17,7 +17,7 @@ from elastalert.ruletypes import (
     WhitelistRule,
 )
 from elastalert.ruletypes.test_base_aggregation_rule import TestBaseAggregationRule
-from elastalert.utils import EventWindow
+from elastalert.utils.event_window import EventWindow
 from elastalert.utils.time import dt_to_ts, ts_to_dt
 from elastalert.utils.util import EAException, ts_now
 

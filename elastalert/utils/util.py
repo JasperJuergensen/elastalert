@@ -6,14 +6,24 @@ import re
 import sys
 
 import pytz
-from elastalert import ElasticSearchClient
 from elastalert.auth import Auth
-from elastalert.exceptions import EAException
-from elastalert.utils.time import total_seconds, ts_now
+from elastalert.clients import ElasticSearchClient
+from elastalert.config import Config
+from elastalert.exceptions import EAException, EARuntimeException
+from elastalert.utils.time import (
+    dt_to_unix,
+    total_seconds,
+    ts_now,
+    ts_to_dt,
+    unix_to_dt,
+)
+from elasticsearch import ElasticsearchException
 from six import string_types
 
+log = logging.getLogger(__name__)
 
-def get_module(module_name):
+
+def get_module(module_name: str):
     """ Loads a module and returns a specific object.
     module_name should 'module.file.object'.
     Returns object or raises EAException on error. """
@@ -352,3 +362,219 @@ def should_scrolling_continue(rule_conf):
     stop_the_scroll = 0 < max_scrolling <= rule_conf.get("scrolling_cycle")
 
     return not stop_the_scroll
+
+
+def get_segment_size(rule_config):
+    """ The segment size is either buffer_size for queries which can overlap or run_every for queries
+    which must be strictly separate. This mimicks the query size for when ElastAlert is running continuously. """
+    if (
+        not rule_config.get("use_count_query")
+        and not rule_config.get("use_terms_query")
+        and not rule_config.get("aggregation_query_element")
+    ):
+        return rule_config.get("buffer_time", Config().conf["buffer_time"])
+    elif rule_config.get("aggregation_query_element"):
+        if rule_config.get("use_run_every_query_size"):
+            return Config().conf["run_every"]
+        else:
+            return rule_config.get("buffer_time", Config().conf["buffer_time"])
+    else:
+        return Config().conf["run_every"]
+
+
+def get_starttime(rule_config):
+    """ Query ES for the last time we ran this rule.
+
+    :param rule_config: The rule configuration.
+    :return: A timestamp or None.
+    """
+    query = {
+        "query": {"bool": {"filter": {"term": {"rule_name": rule_config["name"]}}}},
+        "sort": {"@timestamp": {"order": "desc"}},
+    }
+
+    try:
+        writeback_es = elasticsearch_client(Config().conf)
+        doc_type = "elastalert_status"
+        index = writeback_es.resolve_writeback_index(
+            Config().conf["writeback_index"], doc_type
+        )
+        res = writeback_es.search(
+            index=index, size=1, body=query, _source_includes=["endtime", "rule_name"]
+        )
+        if res["hits"]["hits"]:
+            endtime = ts_to_dt(res["hits"]["hits"][0]["_source"]["endtime"])
+
+            if ts_now() - endtime < Config().conf["old_query_limit"]:
+                return endtime
+            else:
+                log.info(
+                    "Found expired previous run for %s at %s"
+                    % (rule_config["name"], endtime)
+                )
+                return None
+    except (ElasticsearchException, KeyError) as e:
+        raise EARuntimeException(
+            "Error querying for last run: %s" % (e),
+            rule=rule_config["name"],
+            original_exception=e,
+        )
+
+
+def set_starttime(rule_config, endtime):
+    """ Given a rule and an endtime, sets the appropriate starttime for it. """
+    # This means we are starting fresh
+    if "starttime" not in rule_config:
+        if not rule_config.get("scan_entire_timeframe"):
+            # Try to get the last run from Elasticsearch
+            last_run_end = get_starttime(rule_config)
+            if last_run_end:
+                rule_config["starttime"] = last_run_end
+                adjust_start_time_for_overlapping_agg_query(rule_config)
+                adjust_start_time_for_interval_sync(rule_config, endtime)
+                rule_config["minimum_starttime"] = rule_config["starttime"]
+                return None
+
+    # Use buffer for normal queries, or run_every increments otherwise
+    # or, if scan_entire_timeframe, use timeframe
+
+    if not rule_config.get("use_count_query") and not rule_config.get(
+        "use_terms_query"
+    ):
+        if not rule_config.get("scan_entire_timeframe"):
+            buffer_time = rule_config.get("buffer_time", Config().conf["buffer_time"])
+            buffer_delta = endtime - buffer_time
+        else:
+            buffer_delta = endtime - rule_config["timeframe"]
+        # If we started using a previous run, don't go past that
+        if (
+            "minimum_starttime" in rule_config
+            and rule_config["minimum_starttime"] > buffer_delta
+        ):
+            rule_config["starttime"] = rule_config["minimum_starttime"]
+        # If buffer_time doesn't bring us past the previous endtime, use that instead
+        elif (
+            "previous_endtime" in rule_config
+            and rule_config["previous_endtime"] < buffer_delta
+        ):
+            rule_config["starttime"] = rule_config["previous_endtime"]
+            adjust_start_time_for_overlapping_agg_query(rule_config)
+        else:
+            rule_config["starttime"] = buffer_delta
+
+        adjust_start_time_for_interval_sync(rule_config, endtime)
+
+    else:
+        if not rule_config.get("scan_entire_timeframe"):
+            # Query from the end of the last run, if it exists, otherwise a run_every sized window
+            rule_config["starttime"] = rule_config.get(
+                "previous_endtime", endtime - Config().conf["run_every"]
+            )
+        else:
+            rule_config["starttime"] = rule_config.get(
+                "previous_endtime", endtime - rule_config["timeframe"]
+            )
+
+
+def adjust_start_time_for_overlapping_agg_query(rule_config):
+    if rule_config.get("aggregation_query_element"):
+        if (
+            rule_config.get("allow_buffer_time_overlap")
+            and not rule_config.get("use_run_every_query_size")
+            and (rule_config["buffer_time"] > rule_config["run_every"])
+        ):
+            rule_config["starttime"] = rule_config["starttime"] - (
+                rule_config["buffer_time"] - rule_config["run_every"]
+            )
+            rule_config["original_starttime"] = rule_config["starttime"]
+
+
+def adjust_start_time_for_interval_sync(rule_config, endtime):
+    # If aggregation query adjust bucket offset
+    if rule_config.get("aggregation_query_element"):
+
+        if rule_config.get("bucket_interval"):
+            es_interval_delta = rule_config.get("bucket_interval_timedelta")
+            unix_starttime = dt_to_unix(rule_config["starttime"])
+            es_interval_delta_in_sec = total_seconds(es_interval_delta)
+            offset = int(unix_starttime % es_interval_delta_in_sec)
+
+            if rule_config.get("sync_bucket_interval"):
+                rule_config["starttime"] = unix_to_dt(unix_starttime - offset)
+                endtime = unix_to_dt(dt_to_unix(endtime) - offset)
+            else:
+                rule_config["bucket_offset_delta"] = offset
+
+
+def get_index_start(index: str, timestamp_field: str = "@timestamp") -> str:
+    """ Query for one result sorted by timestamp to find the beginning of the index.
+
+    :param index: The index of which to find the earliest event.
+    :return: Timestamp of the earliest event.
+    """
+    query = {"sort": {timestamp_field: {"order": "asc"}}}
+    try:
+        res = {}  # TODO es search on index with size=1
+    except ElasticsearchException as e:
+        raise EARuntimeException(
+            "Elasticsearch query error: %s" % (e), query=query, original_exception=e
+        )
+    if len(res["hits"]["hits"]) == 0:
+        # Index is completely empty, return a date before the epoch
+        return "1969-12-30T00:00:00Z"
+    return res["hits"]["hits"][0][timestamp_field]
+
+
+def get_index(rule, starttime=None, endtime=None):
+    """ Gets the index for a rule. If strftime is set and starttime and endtime
+    are provided, it will return a comma seperated list of indices. If strftime
+    is set but starttime and endtime are not provided, it will replace all format
+    tokens with a wildcard. """
+    index = rule["index"]
+    add_extra = rule.get("search_extra_index", False)
+    if rule.get("use_strftime_index"):
+        if starttime and endtime:
+            return format_index(index, starttime, endtime, add_extra)
+        else:
+            # Replace the substring containing format characters with a *
+            format_start = index.find("%")
+            format_end = index.rfind("%") + 2
+            return index[:format_start] + "*" + index[format_end:]
+    else:
+        return index
+
+
+def enhance_filter(rule):
+    """ If there is a blacklist or whitelist in rule then we add it to the filter.
+    It adds it as a query_string. If there is already an query string its is appended
+    with blacklist or whitelist.
+
+    :param rule:
+    :return:
+    """
+    if not rule.get("filter_by_list", True):
+        return
+    if "blacklist" in rule:
+        listname = "blacklist"
+    elif "whitelist" in rule:
+        listname = "whitelist"
+    else:
+        return
+
+    filters = rule["filter"]
+    additional_terms = []
+    for term in rule[listname]:
+        if not term.startswith("/") or not term.endswith("/"):
+            additional_terms.append(rule["compare_key"] + ':"' + term + '"')
+        else:
+            # These are regular expressions and won't work if they are quoted
+            additional_terms.append(rule["compare_key"] + ":" + term)
+    if listname == "whitelist":
+        query = "NOT " + " AND NOT ".join(additional_terms)
+    else:
+        query = " OR ".join(additional_terms)
+    query_str_filter = {"query_string": {"query": query}}
+    filters.append(query_str_filter)
+    log.debug(
+        "Enhanced filter with {} terms: {}".format(listname, str(query_str_filter))
+    )

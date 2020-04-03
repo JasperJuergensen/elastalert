@@ -1,6 +1,12 @@
 import logging
 
 from elastalert.exceptions import EAConfigException
+from elastalert.queries.elasticsearch_query import (
+    ElasticsearchCountQuery,
+    ElasticsearchQuery,
+    ElasticsearchTermQuery,
+)
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils.event_window import EventWindow
 from elastalert.utils.time import pretty_ts
@@ -16,6 +22,15 @@ class SpikeRule(RuleType):
 
     def __init__(self, *args):
         super(SpikeRule, self).__init__(*args)
+        query_class = ElasticsearchQuery
+        callback = self.add_data
+        if self.rule_config.get("use_count_query"):
+            query_class = ElasticsearchCountQuery
+            callback = self.add_count_data
+        elif self.rule_config.get("use_terms_query"):
+            query_class = ElasticsearchTermQuery
+            callback = self.add_terms_data
+        self.query_factory = QueryFactory(query_class, self.rule_config, callback)
         self.timeframe = self.rules["timeframe"]
 
         self.ref_windows = {}

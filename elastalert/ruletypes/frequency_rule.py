@@ -1,6 +1,12 @@
 from elastalert.exceptions import EAException
+from elastalert.queries.elasticsearch_query import (
+    ElasticsearchCountQuery,
+    ElasticsearchQuery,
+    ElasticsearchTermQuery,
+)
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
-from elastalert.utils import EventWindow
+from elastalert.utils.event_window import EventWindow
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_to_dt
 from elastalert.utils.util import hashable, lookup_es_key, new_get_event_ts
 
@@ -12,6 +18,15 @@ class FrequencyRule(RuleType):
 
     def __init__(self, *args):
         super(FrequencyRule, self).__init__(*args)
+        query_class = ElasticsearchQuery
+        callback = self.add_data
+        if self.rule_config.get("use_count_query"):
+            query_class = ElasticsearchCountQuery
+            callback = self.add_count_data
+        elif self.rule_config.get("use_terms_query"):
+            query_class = ElasticsearchTermQuery
+            callback = self.add_terms_data
+        self.query_factory = QueryFactory(query_class, self.rule_config, callback)
         self.ts_field = self.rules.get("timestamp_field", "@timestamp")
         self.get_ts = new_get_event_ts(self.ts_field)
         self.attach_related = self.rules.get("attach_related", False)

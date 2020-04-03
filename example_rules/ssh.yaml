@@ -1,5 +1,5 @@
 # Rule name, must be unique
-  name: SSH abuse (ElastAlert 3.0.1) - 2
+name: SSH abuse (ElastAlert 3.0.1) - 2
 
 # Alert on x events in y seconds
 type: frequency
@@ -15,9 +15,8 @@ timeframe:
 # These filters are joined with AND and nested in a filtered query
 # For more info: http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl.html
 filter:
-- query:
-    query_string:
-      query: "event.type:authentication_failure"
+- query_string:
+    query: "event.type:authentication_failure"
 
 index: auditbeat-*
 

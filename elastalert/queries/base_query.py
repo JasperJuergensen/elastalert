@@ -17,7 +17,7 @@ class BaseQuery(metaclass=ABCMeta):
         self.persistent = persistent
         self.build_query()
 
-    def run(self, starttime=None, endtime=None):
+    def run(self, starttime=None, endtime=None) -> int:
         """
         Runs the query. This includes the query execution and the callback.
 
@@ -27,14 +27,14 @@ class BaseQuery(metaclass=ABCMeta):
         :param starttime: Start time for the query time range
         :param endtime: End time for the query time range
         """
-        self.run_query(starttime, endtime)
+        return self.run_query(starttime, endtime)
 
     @abstractmethod
     def build_query(self):
         """Builds the query"""
 
     @abstractmethod
-    def run_query(self, starttime, endtime):
+    def run_query(self, starttime, endtime) -> int:
         """
         Runs the query against the datasource.
         This function has to call the callback to pass the data to the rule.

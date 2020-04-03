@@ -4,6 +4,11 @@ import logging
 import sys
 
 from elastalert.exceptions import EAException
+from elastalert.queries.elasticsearch_query import (
+    ElasticsearchQuery,
+    ElasticsearchTermQuery,
+)
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils.time import ts_now, ts_to_dt
 from elastalert.utils.util import (
@@ -21,6 +26,12 @@ class NewTermsRule(RuleType):
 
     def __init__(self, rule, args=None):
         super(NewTermsRule, self).__init__(rule, args)
+        query_class = ElasticsearchQuery
+        callback = self.add_data
+        if self.rule_config.get("use_terms_query"):
+            query_class = ElasticsearchTermQuery
+            callback = self.add_terms_data
+        self.query_factory = QueryFactory(query_class, self.rule_config, callback)
         self.seen_values = {}
         # Allow the use of query_key or fields
         if "fields" not in self.rules:

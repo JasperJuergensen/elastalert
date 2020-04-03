@@ -1,5 +1,6 @@
 import hashlib
 import os
+from typing import Dict, List
 
 import yaml
 from elastalert.exceptions import EAException
@@ -12,12 +13,17 @@ class FileRulesLoader(RulesLoader):
     # Required global (config.yaml) configuration options for the loader
     required_globals = frozenset(["rules_folder"])
 
-    def get_names(self, conf, use_rule=None):
+    def get_rule_configs(self, conf: dict) -> Dict[str, dict]:
+        rule_files = self.get_names(conf)
+        rule_configs = {filename: self.load_rule(filename) for filename in rule_files}
+        return rule_configs
+
+    def get_names(self, conf: dict, use_rule: str = None) -> List[str]:
         # Passing a filename directly can bypass rules_folder and .yaml checks
         if use_rule and os.path.isfile(use_rule):
             return [use_rule]
         rule_folder = conf["rules_folder"]
-        rule_files = []
+        rule_files = list()
         if "scan_subdirectories" in conf and conf["scan_subdirectories"]:
             for root, folders, files in os.walk(rule_folder):
                 for filename in files:
@@ -32,40 +38,62 @@ class FileRulesLoader(RulesLoader):
                     rule_files.append(fullpath)
         return rule_files
 
-    def get_hashes(self, conf, use_rule=None):
+    def get_hashes(self, conf: dict, use_rule: str = None) -> Dict[str, str]:
         rule_files = self.get_names(conf, use_rule)
-        rule_mod_times = {}
+        rule_hashes = dict()
         for rule_file in rule_files:
-            rule_mod_times[rule_file] = self.get_rule_file_hash(rule_file)
-        return rule_mod_times
+            rule_hashes[rule_file] = self.get_rule_file_hash(rule_file)
+        return rule_hashes
 
-    def get_yaml(self, filename):
+    def get_rule_config(self, filename: str) -> dict:
+        """
+        Loads yaml from file
+
+        :param filename: The rule file
+        :return: dict with rule config
+        """
         try:
             return yaml_loader(filename)
         except yaml.scanner.ScannerError as e:
             raise EAException("Could not parse file %s: %s" % (filename, e))
 
-    def get_import_rule(self, rule):
+    def get_import_rule(self, rule_config: dict) -> str:
         """
         Allow for relative paths to the import rule.
-        :param dict rule:
+        :param dict rule_config:
         :return: Path the import rule
         :rtype: str
         """
-        if os.path.isabs(rule["import"]):
-            return rule["import"]
+        if os.path.isabs(rule_config["import"]):
+            return rule_config["import"]
         else:
-            return os.path.join(os.path.dirname(rule["rule_file"]), rule["import"])
+            return os.path.join(
+                os.path.dirname(rule_config["rule_file"]), rule_config["import"]
+            )
 
-    def get_rule_file_hash(self, rule_file):
+    def get_rule_file_hash(self, rule_file: str) -> str:
+        """
+        Creates a hash over a rule file
+
+        :param rule_file: The rule
+        :return: sha1 hash digest
+        """
         rule_file_hash = ""
         if os.path.exists(rule_file):
             with open(rule_file, "rb") as fh:
                 rule_file_hash = hashlib.sha1(fh.read()).digest()
             for import_rule_file in self.import_rules.get(rule_file, []):
-                rule_file_hash += self.get_rule_file_hash(import_rule_file)
+                rule_file_hash = hashlib.sha1(
+                    rule_file_hash + self.get_rule_file_hash(import_rule_file)
+                ).digest()
         return rule_file_hash
 
     @staticmethod
-    def is_yaml(filename):
+    def is_yaml(filename: str) -> bool:
+        """
+        Checks if a file ends with a yaml extension
+
+        :param filename: The file
+        :return bool:
+        """
         return filename.endswith(".yaml") or filename.endswith(".yml")

@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 
 from elastalert.exceptions import EAException
+from elastalert.queries.elasticsearch_query import ElasticsearchAggregationQuery
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils.time import total_seconds, ts_to_dt
 
@@ -8,6 +10,9 @@ from elastalert.utils.time import total_seconds, ts_to_dt
 class BaseAggregationRule(RuleType, metaclass=ABCMeta):
     def __init__(self, *args):
         super(BaseAggregationRule, self).__init__(*args)
+        self.query_factory = QueryFactory(
+            ElasticsearchAggregationQuery, self.rule_config, self.add_aggregation_data
+        )
         bucket_interval = self.rules.get("bucket_interval")
         if bucket_interval:
             if "seconds" in bucket_interval:

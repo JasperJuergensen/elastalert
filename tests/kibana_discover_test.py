@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import pytest
-from elastalert.kibana_discover import generate_kibana_discover_url
+from elastalert.kibana.kibana_discover import generate_kibana_discover_url
 
 
 @pytest.mark.parametrize(

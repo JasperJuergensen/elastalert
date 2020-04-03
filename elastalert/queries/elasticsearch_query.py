@@ -1,11 +1,18 @@
 import copy
 import logging
-from typing import List
+from typing import List, Union
 
+from elastalert.config import Config
 from elastalert.exceptions import EARuntimeException
 from elastalert.queries import BaseQuery
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_now
-from elastalert.utils.util import lookup_es_key, set_es_key, should_scrolling_continue
+from elastalert.utils.util import (
+    elasticsearch_client,
+    get_index_start,
+    lookup_es_key,
+    set_es_key,
+    should_scrolling_continue,
+)
 from elasticsearch import ElasticsearchException, NotFoundError
 
 log = logging.getLogger(__name__)
@@ -21,33 +28,46 @@ class ElasticsearchQuery(BaseQuery):
         self.num_hits = 0
         self.num_dupes = 0
         self.persistent.setdefault("processed_hits", {})
+        self.es = elasticsearch_client(Config().conf)
 
     def build_query(self, sort: bool = True):
-        self.query = {
-            "query": {"bool": {"must": {"filter": self.rule_config.get("filter", [])}}}
-        }
+        self.query = {"query": {"bool": {"filter": self.rule_config.get("filter", [])}}}
         if sort:
             self.query["sort"] = [self.rule_config.get("timestamp_field", "@timestamp")]
 
     def get_hits(self, starttime: str, endtime: str) -> List[dict]:
-        query = copy.deepcopy(self.query)
         if starttime and endtime:
-            query["query"]["bool"]["must"].insert(
-                0,
+            self.query["query"]["bool"].update(
                 {
-                    "range": {
-                        self.rule_config.get("timestamp_field", "@timestamp"): {
-                            "gt": starttime,
-                            "lte": endtime,
+                    "must": {
+                        "range": {
+                            self.rule_config.get("timestamp_field", "@timestamp"): {
+                                "gt": starttime,
+                                "lte": endtime,
+                            }
                         }
                     }
-                },
+                }
             )
+        extra_args = {"_source_includes": self.rule_config["include"]}
+        scroll_keepalive = self.rule_config.get(
+            "scroll_keepalive", Config().conf.get("scroll_keepalive", "30s")
+        )
         try:
+            log.debug("Running query: %s", self.query)
             if self.scroll_id:
-                res = {}  # TODO
+                res = self.es.scroll(scroll_id=self.scroll_id, scroll=scroll_keepalive)
             else:
-                res = {}  # TODO
+                res = self.es.search(
+                    scroll=scroll_keepalive,
+                    index=self.rule_config["index"],
+                    size=self.rule_config.get(
+                        "max_query_size", Config().conf.get("max_query_size", 10000)
+                    ),
+                    body=self.query,
+                    ignore_unavailable=True,
+                    **extra_args
+                )
                 self.total_hits = int(res["hits"]["total"]["value"])
         except ElasticsearchException as e:
             # Elasticsearch sometimes gives us GIGANTIC error messages
@@ -61,7 +81,7 @@ class ElasticsearchQuery(BaseQuery):
             raise EARuntimeException(
                 "Error running query %s" % msg,
                 rule=self.rule_config["name"],
-                query=query,
+                query=self.query,
             )
 
         if "_scroll_id" in res:
@@ -77,13 +97,13 @@ class ElasticsearchQuery(BaseQuery):
                 ]
                 if len(errs):
                     raise EARuntimeException(
-                        "\n".join(errs), rule=self.rule_config["name"], query=query
+                        "\n".join(errs), rule=self.rule_config["name"], query=self.query
                     )
             except (TypeError, KeyError) as e:
                 raise EARuntimeException(
                     str(res["_shards"]["failures"]),
                     rule=self.rule_config["name"],
-                    query=query,
+                    query=self.query,
                     original_exception=e,
                 )
 
@@ -91,20 +111,21 @@ class ElasticsearchQuery(BaseQuery):
         self.num_hits += len(hits)
         lt = self.rule_config.get("use_local_time")
         log.info(
-            "Queried rule %s from %s to %s: %s / %s hits (scrolling %s)",
+            "Queried rule %s from %s to %s: %s / %s hits (scrolling %s from )",
             self.rule_config["name"],
             self.rule_config["index"],
             pretty_ts(starttime, lt),
             pretty_ts(endtime, lt),
             len(hits),
-            "{:.2f}%".format(self.num_hits / self.total_hits * 100),
+            self.num_hits,
+            self.total_hits,
         )
 
         return self.process_hits(self.rule_config, hits)
 
-    def run_query(self, starttime=None, endtime=None):
+    def run_query(self, starttime=None, endtime=None) -> int:
         if starttime is None:
-            starttime = ""  # TODO get_index_start
+            starttime = get_index_start(self.rule_config["index"])
         if endtime is None:
             endtime = ts_now()
         starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
@@ -114,7 +135,7 @@ class ElasticsearchQuery(BaseQuery):
             old_len = len(data)
             data = self.remove_duplicates(data)
             self.num_dupes += old_len - len(data)
-        self.callback(data)
+            self.callback(data)
         try:
             if (
                 self.scroll_id
@@ -127,9 +148,10 @@ class ElasticsearchQuery(BaseQuery):
             log.warning("Scrolling hit maximum recursion depth.")
         if self.scroll_id:
             try:
-                pass  # TODO es_client.clear_scroll(scroll_id=scroll_id)
+                self.es.clear_scroll(scroll_id=self.scroll_id)
             except NotFoundError:
                 pass
+        return self.num_hits
 
     def remove_duplicates(self, data: List[dict]) -> List[dict]:
         new_events_dict = {
@@ -211,22 +233,28 @@ class ElasticsearchQuery(BaseQuery):
 
 
 class ElasticsearchCountQuery(ElasticsearchQuery):
-    def get_hits(self, starttime: str, endtime: str) -> dict:
+    def get_hits(self, starttime: str, endtime: str) -> Union[dict, None]:
         query = copy.deepcopy(self.query)
         if starttime and endtime:
-            query["query"]["bool"]["must"].insert(
-                0,
+            self.query["query"]["bool"].update(
                 {
-                    "range": {
-                        self.rule_config.get("timestamp_field", "@timestamp"): {
-                            "gt": starttime,
-                            "lte": endtime,
+                    "must": {
+                        "range": {
+                            self.rule_config.get("timestamp_field", "@timestamp"): {
+                                "gt": starttime,
+                                "lte": endtime,
+                            }
                         }
                     }
-                },
+                }
             )
         try:
-            res = {}  # TODO
+            log.debug("Running query: %s", self.query)
+            res = self.es.count(
+                index=self.rule_config["index"],
+                body=self.query,
+                ignore_unaivailable=True,
+            )
         except ElasticsearchException as e:
             # Elasticsearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
@@ -271,22 +299,27 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
             }
         )
 
-    def get_hits(self, starttime: str, endtime: str) -> dict:
-        query = copy.deepcopy(self.query)
+    def get_hits(self, starttime: str, endtime: str) -> Union[dict, None]:
         if starttime and endtime:
-            query["query"]["bool"]["must"].insert(
-                0,
+            self.query["query"]["bool"].update(
                 {
-                    "range": {
-                        self.rule_config.get("timestamp_field", "@timestamp"): {
-                            "gt": starttime,
-                            "lte": endtime,
+                    "must": {
+                        "range": {
+                            self.rule_config.get("timestamp_field", "@timestamp"): {
+                                "gt": starttime,
+                                "lte": endtime,
+                            }
                         }
                     }
-                },
+                }
             )
         try:
-            res = {}  # TODO
+            log.debug("Running query: %s", self.query)
+            res = self.es.search(
+                index=self.rule_config["index"],
+                body=self.query,
+                ignore_unavailable=True,
+            )
         except ElasticsearchException as e:
             # Elasticsearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
@@ -299,12 +332,13 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
             raise EARuntimeException(
                 "Error running terms query %s" % msg,
                 rule=self.rule_config["name"],
-                query=query,
+                query=self.query,
                 original_exception=e,
             )
 
         if "aggregations" not in res:
-            raise EARuntimeException("Missing aggregations result")
+            log.info("Missing aggregations result: %s", res)
+            return None
 
         buckets = res["aggregations"]["counts"]["buckets"]
         self.num_hits += len(buckets)
@@ -324,6 +358,7 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
 
 class ElasticsearchAggregationQuery(ElasticsearchQuery):
     def build_query(self, **kwargs):
+        super().build_query(False)
         bucket_interval_period = self.rule_config.get("bucket_interval_period")
         if bucket_interval_period:
             aggs_element = {
@@ -358,22 +393,27 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
                 }
         self.query.update({"aggs": aggs_element})
 
-    def get_hits(self, starttime: str, endtime: str) -> dict:
-        query = copy.deepcopy(self.query)
+    def get_hits(self, starttime: str, endtime: str) -> Union[dict, None]:
         if starttime and endtime:
-            query["query"]["bool"]["must"].insert(
-                0,
+            self.query["query"]["bool"].update(
                 {
-                    "range": {
-                        self.rule_config.get("timestamp_field", "@timestamp"): {
-                            "gt": starttime,
-                            "lte": endtime,
+                    "must": {
+                        "range": {
+                            self.rule_config.get("timestamp_field", "@timestamp"): {
+                                "gt": starttime,
+                                "lte": endtime,
+                            }
                         }
                     }
-                },
+                }
             )
         try:
-            res = {}  # TODO
+            log.debug("Running query: %s", self.query)
+            res = self.es.search(
+                index=self.rule_config["index"],
+                body=self.query,
+                ignore_unavailable=True,
+            )
         except ElasticsearchException as e:
             # Elasticsearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
@@ -386,11 +426,12 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
             raise EARuntimeException(
                 "Error running terms query %s" % msg,
                 rule=self.rule_config["name"],
-                query=query,
+                query=self.query,
                 original_exception=e,
             )
         if "aggregations" not in res:
-            raise EARuntimeException("Missing aggregations result")
+            log.info("Missing aggregations result: %s", res)
+            return None
         payload = res["aggregations"]
 
         self.num_hits += res["hits"]["total"]["value"]
