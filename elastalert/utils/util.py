@@ -6,9 +6,9 @@ import re
 import sys
 
 import pytz
+from elastalert import config
 from elastalert.auth import Auth
 from elastalert.clients import ElasticSearchClient
-from elastalert.config import Config
 from elastalert.exceptions import EAException, EARuntimeException
 from elastalert.utils.time import (
     dt_to_unix,
@@ -372,14 +372,14 @@ def get_segment_size(rule_config):
         and not rule_config.get("use_terms_query")
         and not rule_config.get("aggregation_query_element")
     ):
-        return rule_config.get("buffer_time", Config().conf["buffer_time"])
+        return rule_config.get("buffer_time", config.get_config()["buffer_time"])
     elif rule_config.get("aggregation_query_element"):
         if rule_config.get("use_run_every_query_size"):
-            return Config().conf["run_every"]
+            return config.get_config()["run_every"]
         else:
-            return rule_config.get("buffer_time", Config().conf["buffer_time"])
+            return rule_config.get("buffer_time", config.get_config()["buffer_time"])
     else:
-        return Config().conf["run_every"]
+        return config.get_config()["run_every"]
 
 
 def get_starttime(rule_config):
@@ -394,10 +394,10 @@ def get_starttime(rule_config):
     }
 
     try:
-        writeback_es = elasticsearch_client(Config().conf)
+        writeback_es = elasticsearch_client(config.get_config())
         doc_type = "elastalert_status"
         index = writeback_es.resolve_writeback_index(
-            Config().conf["writeback_index"], doc_type
+            config.get_config()["writeback_index"], doc_type
         )
         res = writeback_es.search(
             index=index, size=1, body=query, _source_includes=["endtime", "rule_name"]
@@ -405,7 +405,7 @@ def get_starttime(rule_config):
         if res["hits"]["hits"]:
             endtime = ts_to_dt(res["hits"]["hits"][0]["_source"]["endtime"])
 
-            if ts_now() - endtime < Config().conf["old_query_limit"]:
+            if ts_now() - endtime < config.get_config()["old_query_limit"]:
                 return endtime
             else:
                 log.info(
@@ -442,7 +442,9 @@ def set_starttime(rule_config, endtime):
         "use_terms_query"
     ):
         if not rule_config.get("scan_entire_timeframe"):
-            buffer_time = rule_config.get("buffer_time", Config().conf["buffer_time"])
+            buffer_time = rule_config.get(
+                "buffer_time", config.get_config()["buffer_time"]
+            )
             buffer_delta = endtime - buffer_time
         else:
             buffer_delta = endtime - rule_config["timeframe"]
@@ -468,7 +470,7 @@ def set_starttime(rule_config, endtime):
         if not rule_config.get("scan_entire_timeframe"):
             # Query from the end of the last run, if it exists, otherwise a run_every sized window
             rule_config["starttime"] = rule_config.get(
-                "previous_endtime", endtime - Config().conf["run_every"]
+                "previous_endtime", endtime - config.get_config()["run_every"]
             )
         else:
             rule_config["starttime"] = rule_config.get(

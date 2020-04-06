@@ -69,8 +69,8 @@ def test_starttime(ea):
 
 def test_init_rule(ea):
     # Simulate state of a rule just loaded from a file
-    ea.rules[0]["minimum_starttime"] = datetime.datetime.now()
-    new_rule = copy.copy(ea.rules[0])
+    ea.rules["testrule"]["minimum_starttime"] = datetime.datetime.now()
+    new_rule = copy.copy(ea.rules["testrule"])
     list(
         map(
             new_rule.pop,
@@ -83,9 +83,9 @@ def test_init_rule(ea):
         )
     )
 
-    # Properties are copied from ea.rules[0]
-    ea.rules[0]["starttime"] = "2014-01-02T00:11:22"
-    ea.rules[0]["processed_hits"] = ["abcdefg"]
+    # Properties are copied from ea.rules["testrule"]
+    ea.rules["testrule"]["starttime"] = "2014-01-02T00:11:22"
+    ea.rules["testrule"]["processed_hits"] = ["abcdefg"]
     new_rule = ea.init_rule(new_rule, False)
     for prop in [
         "starttime",
@@ -95,7 +95,7 @@ def test_init_rule(ea):
         "minimum_starttime",
         "run_every",
     ]:
-        assert new_rule[prop] == ea.rules[0][prop]
+        assert new_rule[prop] == ea.rules["testrule"][prop]
 
     # Properties are fresh
     new_rule = ea.init_rule(new_rule, True)
@@ -142,45 +142,10 @@ def test_query(ea):
     )
 
 
-def test_query_sixsix(ea_sixsix):
-    ea_sixsix.thread_data.current_es.search.return_value = {
-        "hits": {"total": 0, "hits": []}
-    }
-    ea_sixsix.run_query(ea_sixsix.rules[0], START, END)
-    ea_sixsix.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "bool": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": END_TIMESTAMP,
-                                            "gt": START_TIMESTAMP,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-        },
-        index="idx",
-        _source_include=["@timestamp"],
-        ignore_unavailable=True,
-        size=ea_sixsix.rules[0]["max_query_size"],
-        scroll=ea_sixsix.conf["scroll_keepalive"],
-    )
-
-
 def test_query_with_fields(ea):
-    ea.rules[0]["_source_enabled"] = False
+    ea.rules["testrule"]["_source_enabled"] = False
     ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules[0], START, END)
+    ea.run_query(ea.rules["testrule"], START, END)
     ea.thread_data.current_es.search.assert_called_with(
         body={
             "query": {
@@ -206,52 +171,16 @@ def test_query_with_fields(ea):
         },
         index="idx",
         ignore_unavailable=True,
-        size=ea.rules[0]["max_query_size"],
+        size=ea.rules["testrule"]["max_query_size"],
         scroll=ea.conf["scroll_keepalive"],
-    )
-
-
-def test_query_sixsix_with_fields(ea_sixsix):
-    ea_sixsix.rules[0]["_source_enabled"] = False
-    ea_sixsix.thread_data.current_es.search.return_value = {
-        "hits": {"total": 0, "hits": []}
-    }
-    ea_sixsix.run_query(ea_sixsix.rules[0], START, END)
-    ea_sixsix.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "bool": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": END_TIMESTAMP,
-                                            "gt": START_TIMESTAMP,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-            "stored_fields": ["@timestamp"],
-        },
-        index="idx",
-        ignore_unavailable=True,
-        size=ea_sixsix.rules[0]["max_query_size"],
-        scroll=ea_sixsix.conf["scroll_keepalive"],
     )
 
 
 def test_query_with_unix(ea):
-    ea.rules[0]["timestamp_type"] = "unix"
-    ea.rules[0]["dt_to_ts"] = dt_to_unix
+    ea.rules["testrule"]["timestamp_type"] = "unix"
+    ea.rules["testrule"]["dt_to_ts"] = dt_to_unix
     ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules[0], START, END)
+    ea.run_query(ea.rules["testrule"], START, END)
     start_unix = dt_to_unix(START)
     end_unix = dt_to_unix(END)
     ea.thread_data.current_es.search.assert_called_with(
@@ -279,55 +208,16 @@ def test_query_with_unix(ea):
         index="idx",
         _source_include=["@timestamp"],
         ignore_unavailable=True,
-        size=ea.rules[0]["max_query_size"],
+        size=ea.rules["testrule"]["max_query_size"],
         scroll=ea.conf["scroll_keepalive"],
-    )
-
-
-def test_query_sixsix_with_unix(ea_sixsix):
-    ea_sixsix.rules[0]["timestamp_type"] = "unix"
-    ea_sixsix.rules[0]["dt_to_ts"] = dt_to_unix
-    ea_sixsix.thread_data.current_es.search.return_value = {
-        "hits": {"total": 0, "hits": []}
-    }
-    ea_sixsix.run_query(ea_sixsix.rules[0], START, END)
-    start_unix = dt_to_unix(START)
-    end_unix = dt_to_unix(END)
-    ea_sixsix.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "bool": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": end_unix,
-                                            "gt": start_unix,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-        },
-        index="idx",
-        _source_include=["@timestamp"],
-        ignore_unavailable=True,
-        size=ea_sixsix.rules[0]["max_query_size"],
-        scroll=ea_sixsix.conf["scroll_keepalive"],
     )
 
 
 def test_query_with_unixms(ea):
-    ea.rules[0]["timestamp_type"] = "unixms"
-    ea.rules[0]["dt_to_ts"] = dt_to_unixms
+    ea.rules["testrule"]["timestamp_type"] = "unixms"
+    ea.rules["testrule"]["dt_to_ts"] = dt_to_unixms
     ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules[0], START, END)
+    ea.run_query(ea.rules["testrule"], START, END)
     start_unix = dt_to_unixms(START)
     end_unix = dt_to_unixms(END)
     ea.thread_data.current_es.search.assert_called_with(
@@ -355,88 +245,49 @@ def test_query_with_unixms(ea):
         index="idx",
         _source_include=["@timestamp"],
         ignore_unavailable=True,
-        size=ea.rules[0]["max_query_size"],
+        size=ea.rules["testrule"]["max_query_size"],
         scroll=ea.conf["scroll_keepalive"],
-    )
-
-
-def test_query_sixsix_with_unixms(ea_sixsix):
-    ea_sixsix.rules[0]["timestamp_type"] = "unixms"
-    ea_sixsix.rules[0]["dt_to_ts"] = dt_to_unixms
-    ea_sixsix.thread_data.current_es.search.return_value = {
-        "hits": {"total": 0, "hits": []}
-    }
-    ea_sixsix.run_query(ea_sixsix.rules[0], START, END)
-    start_unix = dt_to_unixms(START)
-    end_unix = dt_to_unixms(END)
-    ea_sixsix.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "bool": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": end_unix,
-                                            "gt": start_unix,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-        },
-        index="idx",
-        _source_include=["@timestamp"],
-        ignore_unavailable=True,
-        size=ea_sixsix.rules[0]["max_query_size"],
-        scroll=ea_sixsix.conf["scroll_keepalive"],
     )
 
 
 def test_no_hits(ea):
     ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules[0], START, END)
-    assert ea.rules[0]["type"].add_data.call_count == 0
+    ea.run_query(ea.rules["testrule"], START, END)
+    assert ea.rules["testrule"]["type"].add_data.call_count == 0
 
 
 def test_no_terms_hits(ea):
-    ea.rules[0]["use_terms_query"] = True
-    ea.rules[0]["query_key"] = "QWERTY"
-    ea.rules[0]["doc_type"] = "uiop"
+    ea.rules["testrule"]["use_terms_query"] = True
+    ea.rules["testrule"]["query_key"] = "QWERTY"
+    ea.rules["testrule"]["doc_type"] = "uiop"
     ea.thread_data.current_es.deprecated_search.return_value = {
         "hits": {"total": 0, "hits": []}
     }
-    ea.run_query(ea.rules[0], START, END)
-    assert ea.rules[0]["type"].add_terms_data.call_count == 0
+    ea.run_query(ea.rules["testrule"], START, END)
+    assert ea.rules["testrule"]["type"].add_terms_data.call_count == 0
 
 
 def test_some_hits(ea):
     hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
     hits_dt = generate_hits([START, END])
     ea.thread_data.current_es.search.return_value = hits
-    ea.run_query(ea.rules[0], START, END)
-    assert ea.rules[0]["type"].add_data.call_count == 1
-    ea.rules[0]["type"].add_data.assert_called_with(
+    ea.run_query(ea.rules["testrule"], START, END)
+    assert ea.rules["testrule"]["type"].add_data.call_count == 1
+    ea.rules["testrule"]["type"].add_data.assert_called_with(
         [x["_source"] for x in hits_dt["hits"]["hits"]]
     )
 
 
 def test_some_hits_unix(ea):
-    ea.rules[0]["timestamp_type"] = "unix"
-    ea.rules[0]["dt_to_ts"] = dt_to_unix
-    ea.rules[0]["ts_to_dt"] = unix_to_dt
+    ea.rules["testrule"]["timestamp_type"] = "unix"
+    ea.rules["testrule"]["dt_to_ts"] = dt_to_unix
+    ea.rules["testrule"]["ts_to_dt"] = unix_to_dt
     hits = generate_hits([dt_to_unix(START), dt_to_unix(END)])
     hits_dt = generate_hits([START, END])
     ea.thread_data.current_es.search.return_value = copy.deepcopy(hits)
-    ea.run_query(ea.rules[0], START, END)
-    assert ea.rules[0]["type"].add_data.call_count == 1
-    ea.rules[0]["type"].add_data.assert_called_with(
+    ea.run_query(ea.rules["testrule"], START, END)
+    assert ea.rules["testrule"]["type"].add_data.call_count == 1
+    ea.rules["testrule"]["type"].add_data.assert_called_with(
         [x["_source"] for x in hits_dt["hits"]["hits"]]
     )
 
@@ -452,25 +303,25 @@ def test_duplicate_timestamps(ea):
     ea.thread_data.current_es.search.side_effect = _duplicate_hits_generator(
         [START_TIMESTAMP] * 3, blah="duplicate"
     )
-    ea.run_query(ea.rules[0], START, ts_to_dt("2014-01-01T00:00:00Z"))
+    ea.run_query(ea.rules["testrule"], START, ts_to_dt("2014-01-01T00:00:00Z"))
 
-    assert len(ea.rules[0]["type"].add_data.call_args_list[0][0][0]) == 3
-    assert ea.rules[0]["type"].add_data.call_count == 1
+    assert len(ea.rules["testrule"]["type"].add_data.call_args_list[0][0][0]) == 3
+    assert ea.rules["testrule"]["type"].add_data.call_count == 1
 
     # Run the query again, duplicates will be removed and not added
-    ea.run_query(ea.rules[0], ts_to_dt("2014-01-01T00:00:00Z"), END)
-    assert ea.rules[0]["type"].add_data.call_count == 1
+    ea.run_query(ea.rules["testrule"], ts_to_dt("2014-01-01T00:00:00Z"), END)
+    assert ea.rules["testrule"]["type"].add_data.call_count == 1
 
 
 def test_match(ea):
     hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
     ea.thread_data.current_es.search.return_value = hits
-    ea.rules[0]["type"].matches = [{"@timestamp": END}]
+    ea.rules["testrule"]["type"].matches = [{"@timestamp": END}]
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
+        ea.run_rule(ea.rules["testrule"], END, START)
 
-    ea.rules[0]["alert"][0].alert.called_with({"@timestamp": END_TIMESTAMP})
-    assert ea.rules[0]["alert"][0].alert.call_count == 1
+    ea.rules["testrule"]["alert"][0].alert.called_with({"@timestamp": END_TIMESTAMP})
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
 
 def test_run_rule_calls_garbage_collect(ea):
@@ -479,9 +330,9 @@ def test_run_rule_calls_garbage_collect(ea):
     ea.buffer_time = datetime.timedelta(hours=1)
     ea.run_every = datetime.timedelta(hours=1)
     with mock.patch.object(
-        ea.rules[0]["type"], "garbage_collect"
+        ea.rules["testrule"]["type"], "garbage_collect"
     ) as mock_gc, mock.patch.object(ea, "run_query"):
-        ea.run_rule(ea.rules[0], ts_to_dt(end_time), ts_to_dt(start_time))
+        ea.run_rule(ea.rules["testrule"], ts_to_dt(end_time), ts_to_dt(start_time))
 
     # Running ElastAlert every hour for 12 hours, we should see self.garbage_collect called 12 times.
     assert mock_gc.call_count == 12
@@ -497,14 +348,14 @@ def test_run_rule_calls_garbage_collect(ea):
 def run_rule_query_exception(ea, mock_es):
     with mock.patch("elastalert.elastalert.elasticsearch_client") as mock_es_init:
         mock_es_init.return_value = mock_es
-        ea.run_rule(ea.rules[0], END, START)
+        ea.run_rule(ea.rules["testrule"], END, START)
 
     # Assert neither add_data nor garbage_collect were called
     # and that starttime did not change
-    assert ea.rules[0].get("starttime") == START
-    assert ea.rules[0]["type"].add_data.call_count == 0
-    assert ea.rules[0]["type"].garbage_collect.call_count == 0
-    assert ea.rules[0]["type"].add_count_data.call_count == 0
+    assert ea.rules["testrule"].get("starttime") == START
+    assert ea.rules["testrule"]["type"].add_data.call_count == 0
+    assert ea.rules["testrule"]["type"].garbage_collect.call_count == 0
+    assert ea.rules["testrule"]["type"].add_count_data.call_count == 0
 
 
 def test_query_exception(ea):
@@ -514,29 +365,29 @@ def test_query_exception(ea):
 
 
 def test_query_exception_count_query(ea):
-    ea.rules[0]["use_count_query"] = True
-    ea.rules[0]["doc_type"] = "blahblahblahblah"
+    ea.rules["testrule"]["use_count_query"] = True
+    ea.rules["testrule"]["doc_type"] = "blahblahblahblah"
     mock_es = mock.Mock()
     mock_es.count.side_effect = ElasticsearchException
     run_rule_query_exception(ea, mock_es)
 
 
 def test_match_with_module(ea):
-    mod = TestEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules["testrule"])
     mod.process = mock.Mock()
-    ea.rules[0]["match_enhancements"] = [mod]
+    ea.rules["testrule"]["match_enhancements"] = [mod]
     test_match(ea)
     mod.process.assert_called_with({"@timestamp": END, "num_hits": 0, "num_matches": 1})
 
 
 def test_match_with_module_from_pending(ea):
-    mod = TestEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules["testrule"])
     mod.process = mock.Mock()
-    ea.rules[0]["match_enhancements"] = [mod]
-    ea.rules[0].pop("aggregation")
+    ea.rules["testrule"]["match_enhancements"] = [mod]
+    ea.rules["testrule"].pop("aggregation")
     pending_alert = {
         "match_body": {"foo": "bar"},
-        "rule_name": ea.rules[0]["name"],
+        "rule_name": ea.rules["testrule"]["name"],
         "alert_time": START_TIMESTAMP,
         "@timestamp": START_TIMESTAMP,
     }
@@ -551,7 +402,7 @@ def test_match_with_module_from_pending(ea):
     # If aggregation is set, enhancement IS called
     pending_alert = {
         "match_body": {"foo": "bar"},
-        "rule_name": ea.rules[0]["name"],
+        "rule_name": ea.rules["testrule"]["name"],
         "alert_time": START_TIMESTAMP,
         "@timestamp": START_TIMESTAMP,
     }
@@ -559,45 +410,45 @@ def test_match_with_module_from_pending(ea):
         {"hits": {"hits": [{"_id": "ABCD", "_index": "wb", "_source": pending_alert}]}},
         {"hits": {"hits": []}},
     ]
-    ea.rules[0]["aggregation"] = datetime.timedelta(minutes=10)
+    ea.rules["testrule"]["aggregation"] = datetime.timedelta(minutes=10)
     ea.send_pending_alerts()
     assert mod.process.call_count == 1
 
 
 def test_match_with_module_with_agg(ea):
-    mod = TestEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules["testrule"])
     mod.process = mock.Mock()
-    ea.rules[0]["match_enhancements"] = [mod]
-    ea.rules[0]["aggregation"] = datetime.timedelta(minutes=15)
+    ea.rules["testrule"]["match_enhancements"] = [mod]
+    ea.rules["testrule"]["aggregation"] = datetime.timedelta(minutes=15)
     hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
     ea.thread_data.current_es.search.return_value = hits
-    ea.rules[0]["type"].matches = [{"@timestamp": END}]
+    ea.rules["testrule"]["type"].matches = [{"@timestamp": END}]
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
+        ea.run_rule(ea.rules["testrule"], END, START)
     assert mod.process.call_count == 0
 
 
 def test_match_with_enhancements_first(ea):
-    mod = TestEnhancement(ea.rules[0])
+    mod = TestEnhancement(ea.rules["testrule"])
     mod.process = mock.Mock()
-    ea.rules[0]["match_enhancements"] = [mod]
-    ea.rules[0]["aggregation"] = datetime.timedelta(minutes=15)
-    ea.rules[0]["run_enhancements_first"] = True
+    ea.rules["testrule"]["match_enhancements"] = [mod]
+    ea.rules["testrule"]["aggregation"] = datetime.timedelta(minutes=15)
+    ea.rules["testrule"]["run_enhancements_first"] = True
     hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
     ea.thread_data.current_es.search.return_value = hits
-    ea.rules[0]["type"].matches = [{"@timestamp": END}]
+    ea.rules["testrule"]["type"].matches = [{"@timestamp": END}]
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
         with mock.patch.object(ea, "add_aggregated_alert") as add_alert:
-            ea.run_rule(ea.rules[0], END, START)
+            ea.run_rule(ea.rules["testrule"], END, START)
     mod.process.assert_called_with({"@timestamp": END, "num_hits": 0, "num_matches": 1})
     assert add_alert.call_count == 1
 
     # Assert that dropmatchexception behaves properly
     mod.process = mock.MagicMock(side_effect=DropMatchException)
-    ea.rules[0]["type"].matches = [{"@timestamp": END}]
+    ea.rules["testrule"]["type"].matches = [{"@timestamp": END}]
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
         with mock.patch.object(ea, "add_aggregated_alert") as add_alert:
-            ea.run_rule(ea.rules[0], END, START)
+            ea.run_rule(ea.rules["testrule"], END, START)
     mod.process.assert_called_with({"@timestamp": END, "num_hits": 0, "num_matches": 1})
     assert add_alert.call_count == 0
 
@@ -615,10 +466,12 @@ def test_agg_matchtime(ea):
     with mock.patch("elastalert.elastalert.elasticsearch_client") as mock_es:
         # Aggregate first two, query over full range
         mock_es.return_value = ea.thread_data.current_es
-        ea.rules[0]["aggregate_by_match_time"] = True
-        ea.rules[0]["aggregation"] = datetime.timedelta(minutes=10)
-        ea.rules[0]["type"].matches = [{"@timestamp": h} for h in hits_timestamps]
-        ea.run_rule(ea.rules[0], END, START)
+        ea.rules["testrule"]["aggregate_by_match_time"] = True
+        ea.rules["testrule"]["aggregation"] = datetime.timedelta(minutes=10)
+        ea.rules["testrule"]["type"].matches = [
+            {"@timestamp": h} for h in hits_timestamps
+        ]
+        ea.run_rule(ea.rules["testrule"], END, START)
 
     # Assert that the three matches were added to Elasticsearch
     call1 = ea.writeback_es.index.call_args_list[0][1]["body"]
@@ -683,9 +536,11 @@ def test_agg_not_matchtime(ea):
     ea.thread_data.current_es.search.return_value = hits
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
         with mock.patch("elastalert.elastalert.ts_now", return_value=match_time):
-            ea.rules[0]["aggregation"] = datetime.timedelta(minutes=10)
-            ea.rules[0]["type"].matches = [{"@timestamp": h} for h in hits_timestamps]
-            ea.run_rule(ea.rules[0], END, START)
+            ea.rules["testrule"]["aggregation"] = datetime.timedelta(minutes=10)
+            ea.rules["testrule"]["type"].matches = [
+                {"@timestamp": h} for h in hits_timestamps
+            ]
+            ea.run_rule(ea.rules["testrule"], END, START)
 
     # Assert that the three matches were added to Elasticsearch
     call1 = ea.writeback_es.index.call_args_list[0][1]["body"]
@@ -724,9 +579,11 @@ def test_agg_cron(ea):
                 dt_to_unix(ts_to_dt("2014-09-26T12:46:00")),
                 dt_to_unix(ts_to_dt("2014-09-26T13:04:00")),
             ]
-            ea.rules[0]["aggregation"] = {"schedule": "*/5 * * * *"}
-            ea.rules[0]["type"].matches = [{"@timestamp": h} for h in hits_timestamps]
-            ea.run_rule(ea.rules[0], END, START)
+            ea.rules["testrule"]["aggregation"] = {"schedule": "*/5 * * * *"}
+            ea.rules["testrule"]["type"].matches = [
+                {"@timestamp": h} for h in hits_timestamps
+            ]
+            ea.run_rule(ea.rules["testrule"], END, START)
 
     # Assert that the three matches were added to Elasticsearch
     call1 = ea.writeback_es.index.call_args_list[0][1]["body"]
@@ -758,8 +615,8 @@ def test_agg_no_writeback_connectivity(ea):
     )
     hits = generate_hits([hit1, hit2, hit3])
     ea.thread_data.current_es.search.return_value = hits
-    ea.rules[0]["aggregation"] = datetime.timedelta(minutes=10)
-    ea.rules[0]["type"].matches = [
+    ea.rules["testrule"]["aggregation"] = datetime.timedelta(minutes=10)
+    ea.rules["testrule"]["type"].matches = [
         {"@timestamp": hit1},
         {"@timestamp": hit2},
         {"@timestamp": hit3},
@@ -769,9 +626,9 @@ def test_agg_no_writeback_connectivity(ea):
     )
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
         with mock.patch.object(ea, "find_pending_aggregate_alert", return_value=None):
-            ea.run_rule(ea.rules[0], END, START)
+            ea.run_rule(ea.rules["testrule"], END, START)
 
-    assert ea.rules[0]["agg_matches"] == [
+    assert ea.rules["testrule"]["agg_matches"] == [
         {"@timestamp": hit1, "num_hits": 0, "num_matches": 3},
         {"@timestamp": hit2, "num_hits": 0, "num_matches": 3},
         {"@timestamp": hit3, "num_hits": 0, "num_matches": 3},
@@ -781,16 +638,16 @@ def test_agg_no_writeback_connectivity(ea):
     ea.add_aggregated_alert = mock.Mock()
 
     with mock.patch.object(ea, "run_query"):
-        ea.run_rule(ea.rules[0], END, START)
+        ea.run_rule(ea.rules["testrule"], END, START)
 
     ea.add_aggregated_alert.assert_any_call(
-        {"@timestamp": hit1, "num_hits": 0, "num_matches": 3}, ea.rules[0]
+        {"@timestamp": hit1, "num_hits": 0, "num_matches": 3}, ea.rules["testrule"]
     )
     ea.add_aggregated_alert.assert_any_call(
-        {"@timestamp": hit2, "num_hits": 0, "num_matches": 3}, ea.rules[0]
+        {"@timestamp": hit2, "num_hits": 0, "num_matches": 3}, ea.rules["testrule"]
     )
     ea.add_aggregated_alert.assert_any_call(
-        {"@timestamp": hit3, "num_hits": 0, "num_matches": 3}, ea.rules[0]
+        {"@timestamp": hit3, "num_hits": 0, "num_matches": 3}, ea.rules["testrule"]
     )
 
 
@@ -807,14 +664,16 @@ def test_agg_with_aggregation_key(ea):
     with mock.patch("elastalert.elastalert.elasticsearch_client") as mock_es:
         mock_es.return_value = ea.thread_data.current_es
         with mock.patch("elastalert.elastalert.ts_now", return_value=match_time):
-            ea.rules[0]["aggregation"] = datetime.timedelta(minutes=10)
-            ea.rules[0]["type"].matches = [{"@timestamp": h} for h in hits_timestamps]
+            ea.rules["testrule"]["aggregation"] = datetime.timedelta(minutes=10)
+            ea.rules["testrule"]["type"].matches = [
+                {"@timestamp": h} for h in hits_timestamps
+            ]
             # Hit1 and Hit3 should be aggregated together, since they have same query_key value
-            ea.rules[0]["type"].matches[0]["key"] = "Key Value 1"
-            ea.rules[0]["type"].matches[1]["key"] = "Key Value 2"
-            ea.rules[0]["type"].matches[2]["key"] = "Key Value 1"
-            ea.rules[0]["aggregation_key"] = "key"
-            ea.run_rule(ea.rules[0], END, START)
+            ea.rules["testrule"]["type"].matches[0]["key"] = "Key Value 1"
+            ea.rules["testrule"]["type"].matches[1]["key"] = "Key Value 2"
+            ea.rules["testrule"]["type"].matches[2]["key"] = "Key Value 1"
+            ea.rules["testrule"]["aggregation_key"] = "key"
+            ea.run_rule(ea.rules["testrule"], END, START)
 
     # Assert that the three matches were added to elasticsearch
     call1 = ea.writeback_es.index.call_args_list[0][1]["body"]
@@ -886,33 +745,33 @@ def test_silence(ea):
 
     # Don't alert even with a match
     match = [{"@timestamp": "2014-11-17T00:00:00"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 0
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 0
 
     # Mock ts_now() to +5 hours, alert on match
     match = [{"@timestamp": "2014-11-17T00:00:00"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.ts_now") as mock_ts:
         with mock.patch("elastalert.elastalert.elasticsearch_client"):
             # Converted twice to add tzinfo
             mock_ts.return_value = ts_to_dt(
                 dt_to_ts(datetime.datetime.utcnow() + datetime.timedelta(hours=5))
             )
-            ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 1
+            ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
 
 def test_compound_query_key(ea):
-    ea.rules[0]["query_key"] = "this,that,those"
-    ea.rules[0]["compound_query_key"] = ["this", "that", "those"]
+    ea.rules["testrule"]["query_key"] = "this,that,those"
+    ea.rules["testrule"]["compound_query_key"] = ["this", "that", "those"]
     hits = generate_hits(
         [START_TIMESTAMP, END_TIMESTAMP], this="abc", that="☃", those=4
     )
     ea.thread_data.current_es.search.return_value = hits
-    ea.run_query(ea.rules[0], START, END)
-    call_args = ea.rules[0]["type"].add_data.call_args_list[0]
+    ea.run_query(ea.rules["testrule"], START, END)
+    call_args = ea.rules["testrule"]["type"].add_data.call_args_list[0]
     assert "this,that,those" in call_args[0][0][0]
     assert call_args[0][0][0]["this,that,those"] == "abc, ☃, 4"
 
@@ -925,30 +784,30 @@ def test_silence_query_key(ea):
 
     # Don't alert even with a match
     match = [{"@timestamp": "2014-11-17T00:00:00", "username": "qlo"}]
-    ea.rules[0]["type"].matches = match
-    ea.rules[0]["query_key"] = "username"
+    ea.rules["testrule"]["type"].matches = match
+    ea.rules["testrule"]["query_key"] = "username"
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 0
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 0
 
     # If there is a new record with a different value for the query_key, we should get an alert
     match = [{"@timestamp": "2014-11-17T00:00:01", "username": "dpopes"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 1
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
     # Mock ts_now() to +5 hours, alert on match
     match = [{"@timestamp": "2014-11-17T00:00:00", "username": "qlo"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.ts_now") as mock_ts:
         with mock.patch("elastalert.elastalert.elasticsearch_client"):
             # Converted twice to add tzinfo
             mock_ts.return_value = ts_to_dt(
                 dt_to_ts(datetime.datetime.utcnow() + datetime.timedelta(hours=5))
             )
-            ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 2
+            ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 2
 
 
 def test_realert(ea):
@@ -956,17 +815,17 @@ def test_realert(ea):
     matches = [{"@timestamp": x} for x in hits]
     ea.thread_data.current_es.search.return_value = hits
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.rules[0]["realert"] = datetime.timedelta(seconds=50)
-        ea.rules[0]["type"].matches = matches
-        ea.run_rule(ea.rules[0], END, START)
-        assert ea.rules[0]["alert"][0].alert.call_count == 1
+        ea.rules["testrule"]["realert"] = datetime.timedelta(seconds=50)
+        ea.rules["testrule"]["type"].matches = matches
+        ea.run_rule(ea.rules["testrule"], END, START)
+        assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
     # Doesn't alert again
     matches = [{"@timestamp": x} for x in hits]
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-        ea.rules[0]["type"].matches = matches
-        assert ea.rules[0]["alert"][0].alert.call_count == 1
+        ea.run_rule(ea.rules["testrule"], END, START)
+        ea.rules["testrule"]["type"].matches = matches
+        assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
     # mock ts_now() to past the realert time
     matches = [{"@timestamp": hits[0]}]
@@ -976,77 +835,77 @@ def test_realert(ea):
             mock_ts.return_value = ts_to_dt(
                 dt_to_ts(datetime.datetime.utcnow() + datetime.timedelta(minutes=10))
             )
-            ea.rules[0]["type"].matches = matches
-            ea.run_rule(ea.rules[0], END, START)
-            assert ea.rules[0]["alert"][0].alert.call_count == 2
+            ea.rules["testrule"]["type"].matches = matches
+            ea.run_rule(ea.rules["testrule"], END, START)
+            assert ea.rules["testrule"]["alert"][0].alert.call_count == 2
 
 
 def test_realert_with_query_key(ea):
-    ea.rules[0]["query_key"] = "username"
-    ea.rules[0]["realert"] = datetime.timedelta(minutes=10)
+    ea.rules["testrule"]["query_key"] = "username"
+    ea.rules["testrule"]["realert"] = datetime.timedelta(minutes=10)
 
     # Alert and silence username: qlo
     match = [{"@timestamp": "2014-11-17T00:00:00", "username": "qlo"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 1
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
     # Dont alert again for same username
     match = [{"@timestamp": "2014-11-17T00:05:00", "username": "qlo"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 1
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
     # Do alert with a different value
     match = [{"@timestamp": "2014-11-17T00:05:00", "username": ""}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 2
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 2
 
     # Alert with query_key missing
     match = [{"@timestamp": "2014-11-17T00:05:00"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 3
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 3
 
     # Still alert with a different value
     match = [{"@timestamp": "2014-11-17T00:05:00", "username": "ghengis_khan"}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 4
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 4
 
 
 def test_realert_with_nested_query_key(ea):
-    ea.rules[0]["query_key"] = "user.name"
-    ea.rules[0]["realert"] = datetime.timedelta(minutes=10)
+    ea.rules["testrule"]["query_key"] = "user.name"
+    ea.rules["testrule"]["realert"] = datetime.timedelta(minutes=10)
 
     # Alert and silence username: qlo
     match = [{"@timestamp": "2014-11-17T00:00:00", "user": {"name": "qlo"}}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 1
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
     # Dont alert again for same username
     match = [{"@timestamp": "2014-11-17T00:05:00", "user": {"name": "qlo"}}]
-    ea.rules[0]["type"].matches = match
+    ea.rules["testrule"]["type"].matches = match
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules[0], END, START)
-    assert ea.rules[0]["alert"][0].alert.call_count == 1
+        ea.run_rule(ea.rules["testrule"], END, START)
+    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
 
 
 def test_count(ea):
-    ea.rules[0]["use_count_query"] = True
-    ea.rules[0]["doc_type"] = "doctype"
+    ea.rules["testrule"]["use_count_query"] = True
+    ea.rules["testrule"]["doc_type"] = "doctype"
     with mock.patch("elastalert.elastalert.elasticsearch_client"), mock.patch.object(
         ea, "get_hits_count"
     ) as mock_hits:
-        ea.run_rule(ea.rules[0], END, START)
+        ea.run_rule(ea.rules["testrule"], END, START)
 
     # Assert that es.count is run against every run_every timeframe between START and END
     start = START
@@ -1084,7 +943,7 @@ def test_count(ea):
 
 def run_and_assert_segmented_queries(ea, start, end, segment_size):
     with mock.patch.object(ea, "run_query") as mock_run_query:
-        ea.run_rule(ea.rules[0], end, start)
+        ea.run_rule(ea.rules["testrule"], end, start)
         original_end, original_start = end, start
         for call_args in mock_run_query.call_args_list:
             end = min(start + segment_size, original_end)
@@ -1095,7 +954,7 @@ def run_and_assert_segmented_queries(ea, start, end, segment_size):
         assert ea.writeback_es.index.call_args_list[-1][1]["body"][
             "starttime"
         ] == dt_to_ts(original_start)
-        if ea.rules[0].get("aggregation_query_element"):
+        if ea.rules["testrule"].get("aggregation_query_element"):
             assert ea.writeback_es.index.call_args_list[-1][1]["body"][
                 "endtime"
             ] == dt_to_ts(original_end - (original_end - end))
@@ -1114,41 +973,47 @@ def test_query_segmenting_reset_num_hits(ea):
 
     with mock.patch.object(ea, "run_query") as mock_run_query:
         mock_run_query.side_effect = assert_num_hits_reset()
-        ea.run_rule(ea.rules[0], END, START)
+        ea.run_rule(ea.rules["testrule"], END, START)
     assert mock_run_query.call_count > 1
 
 
 def test_query_segmenting(ea):
     # buffer_time segments with normal queries
-    ea.rules[0]["buffer_time"] = datetime.timedelta(minutes=53)
+    ea.rules["testrule"]["buffer_time"] = datetime.timedelta(minutes=53)
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        run_and_assert_segmented_queries(ea, START, END, ea.rules[0]["buffer_time"])
+        run_and_assert_segmented_queries(
+            ea, START, END, ea.rules["testrule"]["buffer_time"]
+        )
 
     # run_every segments with count queries
-    ea.rules[0]["use_count_query"] = True
+    ea.rules["testrule"]["use_count_query"] = True
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
         run_and_assert_segmented_queries(ea, START, END, ea.run_every)
 
     # run_every segments with terms queries
-    ea.rules[0].pop("use_count_query")
-    ea.rules[0]["use_terms_query"] = True
+    ea.rules["testrule"].pop("use_count_query")
+    ea.rules["testrule"]["use_terms_query"] = True
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
         run_and_assert_segmented_queries(ea, START, END, ea.run_every)
 
     # buffer_time segments with terms queries
-    ea.rules[0].pop("use_terms_query")
-    ea.rules[0]["aggregation_query_element"] = {"term": "term_val"}
+    ea.rules["testrule"].pop("use_terms_query")
+    ea.rules["testrule"]["aggregation_query_element"] = {"term": "term_val"}
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.rules[0]["buffer_time"] = datetime.timedelta(minutes=30)
-        run_and_assert_segmented_queries(ea, START, END, ea.rules[0]["buffer_time"])
+        ea.rules["testrule"]["buffer_time"] = datetime.timedelta(minutes=30)
+        run_and_assert_segmented_queries(
+            ea, START, END, ea.rules["testrule"]["buffer_time"]
+        )
 
     # partial segment size scenario
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.rules[0]["buffer_time"] = datetime.timedelta(minutes=53)
-        run_and_assert_segmented_queries(ea, START, END, ea.rules[0]["buffer_time"])
+        ea.rules["testrule"]["buffer_time"] = datetime.timedelta(minutes=53)
+        run_and_assert_segmented_queries(
+            ea, START, END, ea.rules["testrule"]["buffer_time"]
+        )
 
     # run every segmenting
-    ea.rules[0]["use_run_every_query_size"] = True
+    ea.rules["testrule"]["use_run_every_query_size"] = True
     with mock.patch("elastalert.elastalert.elasticsearch_client"):
         run_and_assert_segmented_queries(ea, START, END, ea.run_every)
 
@@ -1167,14 +1032,14 @@ def test_get_starttime(ea):
         mock_ts.return_value = ts_to_dt(
             "2015-01-05T00:00:00Z"
         )  # 4 days ahead of the endtime
-        assert ea.get_starttime(ea.rules[0]) == ts_to_dt(endtime)
+        assert ea.get_starttime(ea.rules["testrule"]) == ts_to_dt(endtime)
 
     # 10 days old, will return None
     with mock.patch("elastalert.elastalert.ts_now") as mock_ts:
         mock_ts.return_value = ts_to_dt(
             "2015-01-11T00:00:00Z"
         )  # 10 days ahead of the endtime
-        assert ea.get_starttime(ea.rules[0]) is None
+        assert ea.get_starttime(ea.rules["testrule"]) is None
 
 
 def test_set_starttime(ea):
@@ -1182,99 +1047,99 @@ def test_set_starttime(ea):
     end = ts_to_dt("2014-10-10T10:10:10")
     with mock.patch.object(ea, "get_starttime") as mock_gs:
         mock_gs.return_value = None
-        ea.set_starttime(ea.rules[0], end)
+        ea.set_starttime(ea.rules["testrule"], end)
         assert mock_gs.call_count == 1
-    assert ea.rules[0]["starttime"] == end - ea.buffer_time
+    assert ea.rules["testrule"]["starttime"] == end - ea.buffer_time
 
     # Standard query, no starttime, rule specific buffer_time
-    ea.rules[0].pop("starttime")
-    ea.rules[0]["buffer_time"] = datetime.timedelta(minutes=37)
+    ea.rules["testrule"].pop("starttime")
+    ea.rules["testrule"]["buffer_time"] = datetime.timedelta(minutes=37)
     with mock.patch.object(ea, "get_starttime") as mock_gs:
         mock_gs.return_value = None
-        ea.set_starttime(ea.rules[0], end)
+        ea.set_starttime(ea.rules["testrule"], end)
         assert mock_gs.call_count == 1
-    assert ea.rules[0]["starttime"] == end - datetime.timedelta(minutes=37)
-    ea.rules[0].pop("buffer_time")
+    assert ea.rules["testrule"]["starttime"] == end - datetime.timedelta(minutes=37)
+    ea.rules["testrule"].pop("buffer_time")
 
     # Standard query, no starttime, last run
-    ea.rules[0].pop("starttime")
+    ea.rules["testrule"].pop("starttime")
     with mock.patch.object(ea, "get_starttime") as mock_gs:
         mock_gs.return_value = ts_to_dt("2014-10-10T00:00:00")
-        ea.set_starttime(ea.rules[0], end)
+        ea.set_starttime(ea.rules["testrule"], end)
         assert mock_gs.call_count == 1
-    assert ea.rules[0]["starttime"] == ts_to_dt("2014-10-10T00:00:00")
+    assert ea.rules["testrule"]["starttime"] == ts_to_dt("2014-10-10T00:00:00")
 
     # Standard query, no starttime, last run, assure buffer_time doesn't go past
-    ea.rules[0].pop("starttime")
-    ea.rules[0]["buffer_time"] = datetime.timedelta(weeks=1000)
+    ea.rules["testrule"].pop("starttime")
+    ea.rules["testrule"]["buffer_time"] = datetime.timedelta(weeks=1000)
     with mock.patch.object(ea, "get_starttime") as mock_gs:
         mock_gs.return_value = ts_to_dt("2014-10-09T00:00:00")
         # First call sets minumum_time
-        ea.set_starttime(ea.rules[0], end)
+        ea.set_starttime(ea.rules["testrule"], end)
     # Second call uses buffer_time, but it goes past minimum
-    ea.set_starttime(ea.rules[0], end)
-    assert ea.rules[0]["starttime"] == ts_to_dt("2014-10-09T00:00:00")
+    ea.set_starttime(ea.rules["testrule"], end)
+    assert ea.rules["testrule"]["starttime"] == ts_to_dt("2014-10-09T00:00:00")
 
     # Standard query, starttime
-    ea.rules[0].pop("buffer_time")
-    ea.rules[0].pop("minimum_starttime")
+    ea.rules["testrule"].pop("buffer_time")
+    ea.rules["testrule"].pop("minimum_starttime")
     with mock.patch.object(ea, "get_starttime") as mock_gs:
         mock_gs.return_value = None
-        ea.set_starttime(ea.rules[0], end)
+        ea.set_starttime(ea.rules["testrule"], end)
         assert mock_gs.call_count == 0
-    assert ea.rules[0]["starttime"] == end - ea.buffer_time
+    assert ea.rules["testrule"]["starttime"] == end - ea.buffer_time
 
     # Count query, starttime, no previous endtime
-    ea.rules[0]["use_count_query"] = True
-    ea.rules[0]["doc_type"] = "blah"
+    ea.rules["testrule"]["use_count_query"] = True
+    ea.rules["testrule"]["doc_type"] = "blah"
     with mock.patch.object(ea, "get_starttime") as mock_gs:
         mock_gs.return_value = None
-        ea.set_starttime(ea.rules[0], end)
+        ea.set_starttime(ea.rules["testrule"], end)
         assert mock_gs.call_count == 0
-    assert ea.rules[0]["starttime"] == end - ea.run_every
+    assert ea.rules["testrule"]["starttime"] == end - ea.run_every
 
     # Count query, with previous endtime
     with mock.patch("elastalert.elastalert.elasticsearch_client"), mock.patch.object(
         ea, "get_hits_count"
     ):
-        ea.run_rule(ea.rules[0], END, START)
-    ea.set_starttime(ea.rules[0], end)
-    assert ea.rules[0]["starttime"] == END
+        ea.run_rule(ea.rules["testrule"], END, START)
+    ea.set_starttime(ea.rules["testrule"], end)
+    assert ea.rules["testrule"]["starttime"] == END
 
     # buffer_time doesn't go past previous endtime
-    ea.rules[0].pop("use_count_query")
-    ea.rules[0]["previous_endtime"] = end - ea.buffer_time * 2
-    ea.set_starttime(ea.rules[0], end)
-    assert ea.rules[0]["starttime"] == ea.rules[0]["previous_endtime"]
+    ea.rules["testrule"].pop("use_count_query")
+    ea.rules["testrule"]["previous_endtime"] = end - ea.buffer_time * 2
+    ea.set_starttime(ea.rules["testrule"], end)
+    assert ea.rules["testrule"]["starttime"] == ea.rules["testrule"]["previous_endtime"]
 
     # Make sure starttime is updated if previous_endtime isn't used
-    ea.rules[0]["previous_endtime"] = end - ea.buffer_time / 2
-    ea.rules[0]["starttime"] = ts_to_dt("2014-10-09T00:00:01")
-    ea.set_starttime(ea.rules[0], end)
-    assert ea.rules[0]["starttime"] == end - ea.buffer_time
+    ea.rules["testrule"]["previous_endtime"] = end - ea.buffer_time / 2
+    ea.rules["testrule"]["starttime"] = ts_to_dt("2014-10-09T00:00:01")
+    ea.set_starttime(ea.rules["testrule"], end)
+    assert ea.rules["testrule"]["starttime"] == end - ea.buffer_time
 
     # scan_entire_timeframe
-    ea.rules[0].pop("previous_endtime")
-    ea.rules[0].pop("starttime")
-    ea.rules[0]["timeframe"] = datetime.timedelta(days=3)
-    ea.rules[0]["scan_entire_timeframe"] = True
+    ea.rules["testrule"].pop("previous_endtime")
+    ea.rules["testrule"].pop("starttime")
+    ea.rules["testrule"]["timeframe"] = datetime.timedelta(days=3)
+    ea.rules["testrule"]["scan_entire_timeframe"] = True
     with mock.patch.object(ea, "get_starttime") as mock_gs:
         mock_gs.return_value = None
-        ea.set_starttime(ea.rules[0], end)
-    assert ea.rules[0]["starttime"] == end - datetime.timedelta(days=3)
+        ea.set_starttime(ea.rules["testrule"], end)
+    assert ea.rules["testrule"]["starttime"] == end - datetime.timedelta(days=3)
 
 
 def test_kibana_dashboard(ea):
     match = {"@timestamp": "2014-10-11T00:00:00"}
     mock_es = mock.Mock()
-    ea.rules[0]["use_kibana_dashboard"] = "my dashboard"
+    ea.rules["testrule"]["use_kibana_dashboard"] = "my dashboard"
     with mock.patch("elastalert.elastalert.elasticsearch_client") as mock_es_init:
         mock_es_init.return_value = mock_es
 
         # No dashboard found
         mock_es.deprecated_search.return_value = {"hits": {"total": 0, "hits": []}}
         with pytest.raises(EAException):
-            ea.use_kibana_link(ea.rules[0], match)
+            ea.use_kibana_link(ea.rules["testrule"], match)
         mock_call = mock_es.deprecated_search.call_args_list[0][1]
         assert mock_call["body"] == {"query": {"term": {"_id": "my dashboard"}}}
 
@@ -1283,26 +1148,26 @@ def test_kibana_dashboard(ea):
         mock_es.deprecated_search.return_value = {
             "hits": {"hits": [{"_source": {"dashboard": json.dumps(dashboard_temp)}}]}
         }
-        url = ea.use_kibana_link(ea.rules[0], match)
+        url = ea.use_kibana_link(ea.rules["testrule"], match)
         assert "ABCDEFG" in url
         db = json.loads(mock_es.index.call_args_list[0][1]["body"]["dashboard"])
         assert "anytest" in db["title"]
 
         # Query key filtering added
-        ea.rules[0]["query_key"] = "foobar"
+        ea.rules["testrule"]["query_key"] = "foobar"
         match["foobar"] = "baz"
-        url = ea.use_kibana_link(ea.rules[0], match)
+        url = ea.use_kibana_link(ea.rules["testrule"], match)
         db = json.loads(mock_es.index.call_args_list[-1][1]["body"]["dashboard"])
         assert db["services"]["filter"]["list"]["1"]["field"] == "foobar"
         assert db["services"]["filter"]["list"]["1"]["query"] == '"baz"'
 
         # Compound query key
-        ea.rules[0]["query_key"] = "foo,bar"
-        ea.rules[0]["compound_query_key"] = ["foo", "bar"]
+        ea.rules["testrule"]["query_key"] = "foo,bar"
+        ea.rules["testrule"]["compound_query_key"] = ["foo", "bar"]
         match["foo"] = "cat"
         match["bar"] = "dog"
         match["foo,bar"] = "cat, dog"
-        url = ea.use_kibana_link(ea.rules[0], match)
+        url = ea.use_kibana_link(ea.rules["testrule"], match)
         db = json.loads(mock_es.index.call_args_list[-1][1]["body"]["dashboard"])
         found_filters = 0
         for filter_id, filter_dict in list(db["services"]["filter"]["list"].items()):
@@ -1363,7 +1228,7 @@ def test_rule_changes(ea):
             ea.load_rule_changes()
 
     # All 3 rules still exist
-    assert ea.rules[0]["name"] == "rule1"
+    assert ea.rules["testrule"]["name"] == "rule1"
     assert ea.rules[1]["name"] == "rule2"
     assert ea.rules[1]["processed_hits"] == ["save me"]
     assert ea.rules[2]["name"] == "rule3"
@@ -1454,31 +1319,32 @@ def test_rule_changes(ea):
 
 def test_strf_index(ea):
     """ Test that the get_index function properly generates indexes spanning days """
-    ea.rules[0]["index"] = "logstash-%Y.%m.%d"
-    ea.rules[0]["use_strftime_index"] = True
+    ea.rules["testrule"]["index"] = "logstash-%Y.%m.%d"
+    ea.rules["testrule"]["use_strftime_index"] = True
 
     # Test formatting with times
     start = ts_to_dt("2015-01-02T12:34:45Z")
     end = ts_to_dt("2015-01-02T16:15:14Z")
-    assert ea.get_index(ea.rules[0], start, end) == "logstash-2015.01.02"
+    assert ea.get_index(ea.rules["testrule"], start, end) == "logstash-2015.01.02"
     end = ts_to_dt("2015-01-03T01:02:03Z")
-    assert set(ea.get_index(ea.rules[0], start, end).split(",")) == set(
-        ["logstash-2015.01.02", "logstash-2015.01.03"]
-    )
+    assert set(ea.get_index(ea.rules["testrule"], start, end).split(",")) == {
+        "logstash-2015.01.02",
+        "logstash-2015.01.03",
+    }
 
     # Test formatting for wildcard
-    assert ea.get_index(ea.rules[0]) == "logstash-*"
-    ea.rules[0]["index"] = "logstash-%Y.%m"
-    assert ea.get_index(ea.rules[0]) == "logstash-*"
-    ea.rules[0]["index"] = "logstash-%Y.%m-stuff"
-    assert ea.get_index(ea.rules[0]) == "logstash-*-stuff"
+    assert ea.get_index(ea.rules["testrule"]) == "logstash-*"
+    ea.rules["testrule"]["index"] = "logstash-%Y.%m"
+    assert ea.get_index(ea.rules["testrule"]) == "logstash-*"
+    ea.rules["testrule"]["index"] = "logstash-%Y.%m-stuff"
+    assert ea.get_index(ea.rules["testrule"]) == "logstash-*-stuff"
 
 
 def test_count_keys(ea):
-    ea.rules[0]["timeframe"] = datetime.timedelta(minutes=60)
-    ea.rules[0]["top_count_keys"] = ["this", "that"]
-    ea.rules[0]["type"].matches = {"@timestamp": END}
-    ea.rules[0]["doc_type"] = "blah"
+    ea.rules["testrule"]["timeframe"] = datetime.timedelta(minutes=60)
+    ea.rules["testrule"]["top_count_keys"] = ["this", "that"]
+    ea.rules["testrule"]["type"].matches = {"@timestamp": END}
+    ea.rules["testrule"]["doc_type"] = "blah"
     buckets = [
         {
             "aggregations": {
@@ -1506,7 +1372,7 @@ def test_count_keys(ea):
         },
     ]
     ea.thread_data.current_es.deprecated_search.side_effect = buckets
-    counts = ea.get_top_counts(ea.rules[0], START, END, ["this", "that"])
+    counts = ea.get_top_counts(ea.rules["testrule"], START, END, ["this", "that"])
     calls = ea.thread_data.current_es.deprecated_search.call_args_list
     assert calls[0][1]["search_type"] == "count"
     assert calls[0][1]["body"]["aggs"]["filtered"]["aggs"]["counts"]["terms"] == {
@@ -1519,10 +1385,10 @@ def test_count_keys(ea):
 
 
 def test_exponential_realert(ea):
-    ea.rules[0]["exponential_realert"] = datetime.timedelta(
+    ea.rules["testrule"]["exponential_realert"] = datetime.timedelta(
         days=1
     )  # 1 day ~ 10 * 2**13 seconds
-    ea.rules[0]["realert"] = datetime.timedelta(seconds=10)
+    ea.rules["testrule"]["realert"] = datetime.timedelta(seconds=10)
 
     until = ts_to_dt("2015-03-24T00:00:00")
     ts5s = until + datetime.timedelta(seconds=5)
@@ -1545,9 +1411,9 @@ def test_exponential_realert(ea):
     results = (1, 0, 2, 1, 4, 0, 0, 9, 12)
     next_res = iter(results)
     for args in test_values:
-        ea.silence_cache[ea.rules[0]["name"]] = (args[1], args[2])
+        ea.silence_cache[ea.rules["testrule"]["name"]] = (args[1], args[2])
         next_alert, exponent = ea.next_alert_time(
-            ea.rules[0], ea.rules[0]["name"], args[0]
+            ea.rules["testrule"], ea.rules["testrule"]["name"], args[0]
         )
         assert exponent == next(next_res)
 
@@ -1652,34 +1518,35 @@ def test_stop(ea):
 
 def test_notify_email(ea):
     mock_smtp = mock.Mock()
-    ea.rules[0]["notify_email"] = ["foo@foo.foo", "bar@bar.bar"]
+    ea.rules["testrule"]["notify_email"] = ["foo@foo.foo", "bar@bar.bar"]
     with mock.patch("elastalert.elastalert.SMTP") as mock_smtp_f:
         mock_smtp_f.return_value = mock_smtp
 
         # Notify_email from rules, array
-        ea.send_notification_email("omg", rule=ea.rules[0])
+        ea.send_notification_email("omg", rule=ea.rules["testrule"])
         assert set(mock_smtp.sendmail.call_args_list[0][0][1]) == set(
-            ea.rules[0]["notify_email"]
+            ea.rules["testrule"]["notify_email"]
         )
 
         # With ea.notify_email
         ea.notify_email = ["baz@baz.baz"]
-        ea.send_notification_email("omg", rule=ea.rules[0])
+        ea.send_notification_email("omg", rule=ea.rules["testrule"])
         assert set(mock_smtp.sendmail.call_args_list[1][0][1]) == set(
-            ["baz@baz.baz"] + ea.rules[0]["notify_email"]
+            ["baz@baz.baz"] + ea.rules["testrule"]["notify_email"]
         )
 
         # With ea.notify email but as single string
-        ea.rules[0]["notify_email"] = "foo@foo.foo"
-        ea.send_notification_email("omg", rule=ea.rules[0])
-        assert set(mock_smtp.sendmail.call_args_list[2][0][1]) == set(
-            ["baz@baz.baz", "foo@foo.foo"]
-        )
+        ea.rules["testrule"]["notify_email"] = "foo@foo.foo"
+        ea.send_notification_email("omg", rule=ea.rules["testrule"])
+        assert set(mock_smtp.sendmail.call_args_list[2][0][1]) == {
+            "baz@baz.baz",
+            "foo@foo.foo",
+        }
 
         # None from rule
-        ea.rules[0].pop("notify_email")
-        ea.send_notification_email("omg", rule=ea.rules[0])
-        assert set(mock_smtp.sendmail.call_args_list[3][0][1]) == set(["baz@baz.baz"])
+        ea.rules["testrule"].pop("notify_email")
+        ea.send_notification_email("omg", rule=ea.rules["testrule"])
+        assert set(mock_smtp.sendmail.call_args_list[3][0][1]) == {"baz@baz.baz"}
 
 
 def test_uncaught_exceptions(ea):
@@ -1687,13 +1554,13 @@ def test_uncaught_exceptions(ea):
 
     # With disabling set to false
     ea.disable_rules_on_error = False
-    ea.handle_uncaught_exception(e, ea.rules[0])
+    ea.handle_uncaught_exception(e, ea.rules["testrule"])
     assert len(ea.rules) == 1
     assert len(ea.disabled_rules) == 0
 
     # With disabling set to true
     ea.disable_rules_on_error = True
-    ea.handle_uncaught_exception(e, ea.rules[0])
+    ea.handle_uncaught_exception(e, ea.rules["testrule"])
     assert len(ea.rules) == 0
     assert len(ea.disabled_rules) == 1
 
@@ -1713,7 +1580,7 @@ def test_uncaught_exceptions(ea):
     # Notify email is sent
     ea.notify_email = "qlo@example.com"
     with mock.patch.object(ea, "send_notification_email") as mock_email:
-        ea.handle_uncaught_exception(e, ea.rules[0])
+        ea.handle_uncaught_exception(e, ea.rules["testrule"])
     assert mock_email.call_args_list[0][1] == {
         "exception": e,
         "rule": ea.disabled_rules[0],
@@ -1724,7 +1591,7 @@ def test_get_top_counts_handles_no_hits_returned(ea):
     with mock.patch.object(ea, "get_hits_terms") as mock_hits:
         mock_hits.return_value = None
 
-        rule = ea.rules[0]
+        rule = ea.rules["testrule"]
         starttime = datetime.datetime.now() - datetime.timedelta(minutes=10)
         endtime = datetime.datetime.now()
         keys = ["foo"]
@@ -1736,74 +1603,47 @@ def test_get_top_counts_handles_no_hits_returned(ea):
 def test_remove_old_events(ea):
     now = ts_now()
     minute = datetime.timedelta(minutes=1)
-    ea.rules[0]["processed_hits"] = {
+    ea.rules["testrule"]["processed_hits"] = {
         "foo": now - minute,
         "bar": now - minute * 5,
         "baz": now - minute * 15,
     }
-    ea.rules[0]["buffer_time"] = datetime.timedelta(minutes=10)
+    ea.rules["testrule"]["buffer_time"] = datetime.timedelta(minutes=10)
 
     # With a query delay, only events older than 20 minutes will be removed (none)
-    ea.rules[0]["query_delay"] = datetime.timedelta(minutes=10)
-    ea.remove_old_events(ea.rules[0])
-    assert len(ea.rules[0]["processed_hits"]) == 3
+    ea.rules["testrule"]["query_delay"] = datetime.timedelta(minutes=10)
+    ea.remove_old_events(ea.rules["testrule"])
+    assert len(ea.rules["testrule"]["processed_hits"]) == 3
 
     # With no query delay, the 15 minute old event will be removed
-    ea.rules[0].pop("query_delay")
-    ea.remove_old_events(ea.rules[0])
-    assert len(ea.rules[0]["processed_hits"]) == 2
-    assert "baz" not in ea.rules[0]["processed_hits"]
+    ea.rules["testrule"].pop("query_delay")
+    ea.remove_old_events(ea.rules["testrule"])
+    assert len(ea.rules["testrule"]["processed_hits"]) == 2
+    assert "baz" not in ea.rules["testrule"]["processed_hits"]
 
 
 def test_query_with_whitelist_filter_es(ea):
-    ea.rules[0]["_source_enabled"] = False
-    ea.rules[0]["five"] = False
-    ea.rules[0]["filter"] = [{"query_string": {"query": "baz"}}]
-    ea.rules[0]["compare_key"] = "username"
-    ea.rules[0]["whitelist"] = ["xudan1", "xudan12", "aa1", "bb1"]
-    new_rule = copy.copy(ea.rules[0])
+    ea.rules["testrule"]["_source_enabled"] = False
+    ea.rules["testrule"]["five"] = False
+    ea.rules["testrule"]["filter"] = [{"query_string": {"query": "baz"}}]
+    ea.rules["testrule"]["compare_key"] = "username"
+    ea.rules["testrule"]["whitelist"] = ["xudan1", "xudan12", "aa1", "bb1"]
+    new_rule = copy.copy(ea.rules["testrule"])
     ea.init_rule(new_rule, True)
     assert (
         'NOT username:"xudan1" AND NOT username:"xudan12" AND NOT username:"aa1"'
         in new_rule["filter"][-1]["query"]["query_string"]["query"]
-    )
-
-
-def test_query_with_whitelist_filter_es_five(ea_sixsix):
-    ea_sixsix.rules[0]["_source_enabled"] = False
-    ea_sixsix.rules[0]["filter"] = [{"query_string": {"query": "baz"}}]
-    ea_sixsix.rules[0]["compare_key"] = "username"
-    ea_sixsix.rules[0]["whitelist"] = ["xudan1", "xudan12", "aa1", "bb1"]
-    new_rule = copy.copy(ea_sixsix.rules[0])
-    ea_sixsix.init_rule(new_rule, True)
-    assert (
-        'NOT username:"xudan1" AND NOT username:"xudan12" AND NOT username:"aa1"'
-        in new_rule["filter"][-1]["query_string"]["query"]
     )
 
 
 def test_query_with_blacklist_filter_es(ea):
-    ea.rules[0]["_source_enabled"] = False
-    ea.rules[0]["filter"] = [{"query_string": {"query": "baz"}}]
-    ea.rules[0]["compare_key"] = "username"
-    ea.rules[0]["blacklist"] = ["xudan1", "xudan12", "aa1", "bb1"]
-    new_rule = copy.copy(ea.rules[0])
+    ea.rules["testrule"]["_source_enabled"] = False
+    ea.rules["testrule"]["filter"] = [{"query_string": {"query": "baz"}}]
+    ea.rules["testrule"]["compare_key"] = "username"
+    ea.rules["testrule"]["blacklist"] = ["xudan1", "xudan12", "aa1", "bb1"]
+    new_rule = copy.copy(ea.rules["testrule"])
     ea.init_rule(new_rule, True)
     assert (
         'username:"xudan1" OR username:"xudan12" OR username:"aa1"'
         in new_rule["filter"][-1]["query"]["query_string"]["query"]
-    )
-
-
-def test_query_with_blacklist_filter_es_five(ea_sixsix):
-    ea_sixsix.rules[0]["_source_enabled"] = False
-    ea_sixsix.rules[0]["filter"] = [{"query_string": {"query": "baz"}}]
-    ea_sixsix.rules[0]["compare_key"] = "username"
-    ea_sixsix.rules[0]["blacklist"] = ["xudan1", "xudan12", "aa1", "bb1"]
-    ea_sixsix.rules[0]["blacklist"] = ["xudan1", "xudan12", "aa1", "bb1"]
-    new_rule = copy.copy(ea_sixsix.rules[0])
-    ea_sixsix.init_rule(new_rule, True)
-    assert (
-        'username:"xudan1" OR username:"xudan12" OR username:"aa1"'
-        in new_rule["filter"][-1]["query_string"]["query"]
     )

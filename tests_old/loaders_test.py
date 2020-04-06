@@ -6,7 +6,7 @@ import elastalert.alerter
 import elastalert.ruletypes
 import mock
 import pytest
-from elastalert.config import load_conf
+from elastalert import config
 from elastalert.loaders import FileRulesLoader
 from elastalert.utils.util import EAException
 
@@ -51,25 +51,27 @@ def test_import_rules():
     rules_loader = FileRulesLoader(test_config)
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy["type"] = "testing.test.RuleType"
-    with mock.patch.object(rules_loader, "load_yaml") as mock_open:
-        mock_open.return_value = test_rule_copy
+    with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
+        with mock.patch.object(rules_loader, "get_names") as mock_names:
+            mock_names.return_value = ["test_rule"]
+            mock_open.return_value = test_rule_copy
 
-        # Test that type is imported
-        with mock.patch("builtins.__import__") as mock_import:
-            mock_import.return_value = elastalert.ruletypes
-            rules_loader.load_configuration("test_config", test_config)
-        assert mock_import.call_args_list[0][0][0] == "testing.test"
-        assert mock_import.call_args_list[0][0][3] == ["RuleType"]
+            # Test that type is imported
+            with mock.patch("builtins.__import__") as mock_import:
+                mock_import.return_value = elastalert.ruletypes
+                rules_loader.get_rule_configs(test_config)
+            assert mock_import.call_args_list[0][0][0] == "testing.test"
+            assert mock_import.call_args_list[0][0][3] == ["RuleType"]
 
-        # Test that alerts are imported
-        test_rule_copy = copy.deepcopy(test_rule)
-        mock_open.return_value = test_rule_copy
-        test_rule_copy["alert"] = "testing2.test2.TestAlerter"
-        with mock.patch("builtins.__import__") as mock_import:
-            mock_import.return_value = elastalert.alerter.test_alerter
-            rules_loader.load_configuration("test_config", test_config)
-        assert mock_import.call_args_list[0][0][0] == "testing2.test2"
-        assert mock_import.call_args_list[0][0][3] == ["TestAlerter"]
+            # Test that alerts are imported
+            test_rule_copy = copy.deepcopy(test_rule)
+            mock_open.return_value = test_rule_copy
+            test_rule_copy["alert"] = "testing2.test2.TestAlerter"
+            with mock.patch("builtins.__import__") as mock_import:
+                mock_import.return_value = elastalert.alerter.test_alerter
+                rules_loader.get_rule_configs(test_config)
+            assert mock_import.call_args_list[0][0][0] == "testing2.test2"
+            assert mock_import.call_args_list[0][0][3] == ["TestAlerter"]
 
 
 def test_import_import():
@@ -84,19 +86,21 @@ def test_import_import():
         "email": "ignored@email",  # overwritten by the email in import_rule
     }
 
-    with mock.patch.object(rules_loader, "get_yaml") as mock_open:
-        mock_open.side_effect = [import_rule, import_me]
-        rules = rules_loader.load_configuration("blah.yaml", test_config)
-        assert mock_open.call_args_list[0][0] == ("blah.yaml",)
-        assert mock_open.call_args_list[1][0] == ("importme.ymlt",)
-        assert len(mock_open.call_args_list) == 2
-        assert rules["es_port"] == 12349
-        assert rules["es_host"] == "imported_host"
-        assert rules["email"] == ["test@test.test"]
-        assert rules["filter"] == import_rule["filter"]
+    with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
+        with mock.patch.object(rules_loader, "get_names") as mock_names:
+            mock_names.return_value = ["test_rule"]
+            mock_open.side_effect = [import_rule, import_me]
+            rules = rules_loader.get_rule_configs(test_config)
+            assert mock_open.call_args_list[0][0] == ("blah.yaml",)
+            assert mock_open.call_args_list[1][0] == ("importme.ymlt",)
+            assert len(mock_open.call_args_list) == 2
+            assert rules["es_port"] == 12349
+            assert rules["es_host"] == "imported_host"
+            assert rules["email"] == ["test@test.test"]
+            assert rules["filter"] == import_rule["filter"]
 
-        # check global import_rule dependency
-        assert rules_loader.import_rules == {"blah.yaml": ["importme.ymlt"]}
+            # check global import_rule dependency
+            assert rules_loader.import_rules == {"blah.yaml": ["importme.ymlt"]}
 
 
 def test_import_absolute_import():
@@ -111,16 +115,18 @@ def test_import_absolute_import():
         "email": "ignored@email",  # overwritten by the email in import_rule
     }
 
-    with mock.patch.object(rules_loader, "get_yaml") as mock_open:
-        mock_open.side_effect = [import_rule, import_me]
-        rules = rules_loader.load_configuration("blah.yaml", test_config)
-        assert mock_open.call_args_list[0][0] == ("blah.yaml",)
-        assert mock_open.call_args_list[1][0] == ("/importme.ymlt",)
-        assert len(mock_open.call_args_list) == 2
-        assert rules["es_port"] == 12349
-        assert rules["es_host"] == "imported_host"
-        assert rules["email"] == ["test@test.test"]
-        assert rules["filter"] == import_rule["filter"]
+    with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
+        with mock.patch.object(rules_loader, "get_names") as mock_names:
+            mock_names.return_value = ["test_rule"]
+            mock_open.side_effect = [import_rule, import_me]
+            rules = rules_loader.get_rule_configs(test_config)
+            assert mock_open.call_args_list[0][0] == ("blah.yaml",)
+            assert mock_open.call_args_list[1][0] == ("/importme.ymlt",)
+            assert len(mock_open.call_args_list) == 2
+            assert rules["es_port"] == 12349
+            assert rules["es_host"] == "imported_host"
+            assert rules["email"] == ["test@test.test"]
+            assert rules["filter"] == import_rule["filter"]
 
 
 def test_import_filter():
@@ -137,13 +143,15 @@ def test_import_filter():
         "filter": [{"term": {"ratchet": "clank"}}],
     }
 
-    with mock.patch.object(rules_loader, "get_yaml") as mock_open:
-        mock_open.side_effect = [import_rule, import_me]
-        rules = rules_loader.load_configuration("blah.yaml", test_config)
-        assert rules["filter"] == [
-            {"term": {"ratchet": "clank"}},
-            {"term": {"key": "value"}},
-        ]
+    with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
+        with mock.patch.object(rules_loader, "get_names") as mock_names:
+            mock_names.return_value = ["test_rule"]
+            mock_open.side_effect = [import_rule, import_me]
+            rules = rules_loader.get_rule_configs(test_config)
+            assert rules["filter"] == [
+                {"term": {"ratchet": "clank"}},
+                {"term": {"key": "value"}},
+            ]
 
 
 def test_load_inline_alert_rule():
@@ -154,13 +162,19 @@ def test_load_inline_alert_rule():
         {"email": {"email": "baz@foo.bar"}},
     ]
     test_config_copy = copy.deepcopy(test_config)
-    with mock.patch.object(rules_loader, "get_yaml") as mock_open:
-        mock_open.side_effect = [test_config_copy, test_rule_copy]
-        rules_loader.load_modules(test_rule_copy)
-        assert isinstance(test_rule_copy["alert"][0], elastalert.alerter.EmailAlerter)
-        assert isinstance(test_rule_copy["alert"][1], elastalert.alerter.EmailAlerter)
-        assert "foo@bar.baz" in test_rule_copy["alert"][0].rule["email"]
-        assert "baz@foo.bar" in test_rule_copy["alert"][1].rule["email"]
+    with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
+        with mock.patch.object(rules_loader, "get_names") as mock_names:
+            mock_names.return_value = ["test_rule"]
+            mock_open.side_effect = [test_config_copy, test_rule_copy]
+            rules_loader.load_modules(test_rule_copy)
+            assert isinstance(
+                test_rule_copy["alert"][0], elastalert.alerter.EmailAlerter
+            )
+            assert isinstance(
+                test_rule_copy["alert"][1], elastalert.alerter.EmailAlerter
+            )
+            assert "foo@bar.baz" in test_rule_copy["alert"][0].rule["email"]
+            assert "baz@foo.bar" in test_rule_copy["alert"][1].rule["email"]
 
 
 def test_file_rules_loader_get_names_recursive():
@@ -215,7 +229,7 @@ def test_load_rules():
 
             with mock.patch("os.walk") as mock_ls:
                 mock_ls.return_value = [("", [], ["testrule.yaml"])]
-                rules = load_conf(test_args)
+                rules = config.get_config()
                 rules["rules"] = rules["rules_loader"].load(rules)
                 assert isinstance(
                     rules["rules"][0]["type"], elastalert.ruletypes.RuleType
@@ -247,7 +261,7 @@ def test_load_default_host_port():
 
             with mock.patch("os.walk") as mock_ls:
                 mock_ls.return_value = [("", [], ["testrule.yaml"])]
-                rules = load_conf(test_args)
+                rules = config.get_config()
                 rules["rules"] = rules["rules_loader"].load(rules)
 
                 # Assert include doesn't contain duplicates
@@ -270,7 +284,7 @@ def test_load_ssl_env_false():
             with mock.patch("os.listdir") as mock_ls:
                 with mock.patch.dict(os.environ, {"ES_USE_SSL": "false"}):
                     mock_ls.return_value = ["testrule.yaml"]
-                    rules = load_conf(test_args)
+                    rules = config.get_config()
                     rules["rules"] = rules["rules_loader"].load(rules)
 
                     assert rules["use_ssl"] is False
@@ -291,7 +305,7 @@ def test_load_ssl_env_true():
             with mock.patch("os.listdir") as mock_ls:
                 with mock.patch.dict(os.environ, {"ES_USE_SSL": "true"}):
                     mock_ls.return_value = ["testrule.yaml"]
-                    rules = load_conf(test_args)
+                    rules = config.get_config()
                     rules["rules"] = rules["rules_loader"].load(rules)
 
                     assert rules["use_ssl"] is True
@@ -312,7 +326,7 @@ def test_load_url_prefix_env():
             with mock.patch("os.listdir") as mock_ls:
                 with mock.patch.dict(os.environ, {"ES_URL_PREFIX": "es/"}):
                     mock_ls.return_value = ["testrule.yaml"]
-                    rules = load_conf(test_args)
+                    rules = config.get_config()
                     rules["rules"] = rules["rules_loader"].load(rules)
 
                     assert rules["es_url_prefix"] == "es/"
@@ -331,7 +345,7 @@ def test_load_disabled_rules():
 
             with mock.patch("os.listdir") as mock_ls:
                 mock_ls.return_value = ["testrule.yaml"]
-                rules = load_conf(test_args)
+                rules = config.get_config()
                 rules["rules"] = rules["rules_loader"].load(rules)
                 # The rule is not loaded for it has "is_enabled=False"
                 assert len(rules["rules"]) == 0
@@ -370,7 +384,7 @@ def test_raises_on_missing_config():
                     with pytest.raises(
                         EAException, message="key %s should be required" % key
                     ):
-                        rules = load_conf(test_args)
+                        rules = config.get_config()
                         rules["rules"] = rules["rules_loader"].load(rules)
 
 
@@ -380,7 +394,7 @@ def test_compound_query_key():
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy.pop("use_count_query")
     test_rule_copy["query_key"] = ["field1", "field2"]
-    rules_loader.load_options(test_rule_copy, test_config, "filename.yaml")
+    rules_loader.parse_rule_config("filename.yaml", test_rule_copy, test_config)
     assert "field1" in test_rule_copy["include"]
     assert "field2" in test_rule_copy["include"]
     assert test_rule_copy["query_key"] == "field1,field2"
@@ -393,7 +407,7 @@ def test_query_key_with_single_value():
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy.pop("use_count_query")
     test_rule_copy["query_key"] = ["field1"]
-    rules_loader.load_options(test_rule_copy, test_config, "filename.yaml")
+    rules_loader.parse_rule_config("filename.yaml", test_rule_copy, test_config)
     assert "field1" in test_rule_copy["include"]
     assert test_rule_copy["query_key"] == "field1"
     assert "compound_query_key" not in test_rule_copy
@@ -405,7 +419,7 @@ def test_query_key_with_no_values():
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy.pop("use_count_query")
     test_rule_copy["query_key"] = []
-    rules_loader.load_options(test_rule_copy, test_config, "filename.yaml")
+    rules_loader.parse_rule_config("filename.yaml", test_rule_copy, test_config)
     assert "query_key" not in test_rule_copy
     assert "compound_query_key" not in test_rule_copy
 
@@ -415,7 +429,7 @@ def test_name_inference():
     rules_loader = FileRulesLoader(test_config_copy)
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy.pop("name")
-    rules_loader.load_options(test_rule_copy, test_config, "msmerc woz ere.yaml")
+    rules_loader.parse_rule_config("msmerc woz ere.yaml", test_rule_copy, test_config)
     assert test_rule_copy["name"] == "msmerc woz ere"
 
 
@@ -444,13 +458,13 @@ def test_raises_on_bad_generate_kibana_filters():
 
         test_rule_copy = copy.deepcopy(test_rule)
         test_rule_copy["filter"] = good
-        with mock.patch.object(rules_loader, "get_yaml") as mock_open:
+        with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
             mock_open.return_value = test_rule_copy
-            rules_loader.load_configuration("blah", test_config)
+            rules_loader.get_rule_configs(test_config)
             for bad in bad_filters:
                 test_rule_copy["filter"] = good + bad
                 with pytest.raises(EAException):
-                    rules_loader.load_configuration("blah", test_config)
+                    rules_loader.get_rule_configs(test_config)
 
 
 def test_kibana_discover_from_timedelta():
@@ -458,7 +472,7 @@ def test_kibana_discover_from_timedelta():
     rules_loader = FileRulesLoader(test_config_copy)
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy["kibana_discover_from_timedelta"] = {"minutes": 2}
-    rules_loader.load_options(test_rule_copy, test_config, "filename.yaml")
+    rules_loader.parse_rule_config("filename.yaml", test_rule_copy, test_config)
     assert isinstance(
         test_rule_copy["kibana_discover_from_timedelta"], datetime.timedelta
     )
@@ -472,7 +486,7 @@ def test_kibana_discover_to_timedelta():
     rules_loader = FileRulesLoader(test_config_copy)
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy["kibana_discover_to_timedelta"] = {"minutes": 2}
-    rules_loader.load_options(test_rule_copy, test_config, "filename.yaml")
+    rules_loader.parse_rule_config("filename.yaml", test_rule_copy, test_config)
     assert isinstance(
         test_rule_copy["kibana_discover_to_timedelta"], datetime.timedelta
     )

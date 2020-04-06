@@ -6,7 +6,7 @@ import dateutil
 import elastalert.create_index
 import elastalert.elastalert
 import pytest
-from elastalert import ElasticSearchClient
+from elastalert.clients import ElasticSearchClient
 from elastalert.utils.util import build_es_conn_config
 
 test_index = "test_index"

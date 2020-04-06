@@ -3,12 +3,12 @@ import logging
 import time
 from typing import List, Tuple
 
+from elastalert import config
 from elastalert.alerter import DebugAlerter
-from elastalert.config import Config
 from elastalert.enhancements.drop_match_exception import DropMatchException
 from elastalert.exceptions import EAException, EARuntimeException
 from elastalert.utils.elastic import get_query_key_value
-from elastalert.utils.time import seconds, total_seconds, ts_now, ts_to_dt
+from elastalert.utils.time import dt_to_ts, seconds, total_seconds, ts_now, ts_to_dt
 from elastalert.utils.util import elasticsearch_client, get_segment_size, set_starttime
 from elasticsearch import ElasticsearchException
 
@@ -18,11 +18,11 @@ log = logging.getLogger(__name__)
 class Rule:
     """"""
 
-    def __init__(self, rule_config):
+    def __init__(self, rule_config: dict):
         """"""
         self.rule_config = rule_config
         self.silence_cache = {}
-        self.writeback_es = elasticsearch_client(Config().conf)
+        self.writeback_es = elasticsearch_client(config.get_config())
 
     def run_rule(self, endtime=None, starttime=None):
         """"""
@@ -43,11 +43,12 @@ class Rule:
             return 0
         self.cumulative_hits = 0
         segment_size = get_segment_size(self.rule_config)
+        query = self.query_factory.get_query_instance()
 
         tmp_endtime = self.rule_config["starttime"]
         while endtime - self.rule_config["starttime"] > segment_size:
             tmp_endtime += segment_size
-            self.cumulative_hits += self.query_factory.get_query_instance().run(
+            self.cumulative_hits += query.run(
                 self.rule_config["starttime"], tmp_endtime
             )
             self.rule_config["starttime"] = tmp_endtime
@@ -55,7 +56,7 @@ class Rule:
 
         if self.rule_config.get("aggregation_query_element"):
             if endtime - tmp_endtime == segment_size:
-                self.cumulative_hits += self.query_factory.get_query_instance().run(
+                self.cumulative_hits += query.run(
                     tmp_endtime, self.rule_config["starttime"]
                 )
             elif (
@@ -66,9 +67,7 @@ class Rule:
             else:
                 endtime = tmp_endtime
         else:
-            self.cumulative_hits += self.query_factory.get_query_instance().run(
-                self.rule_config["starttime"], endtime
-            )
+            self.cumulative_hits += query.run(self.rule_config["starttime"], endtime)
             self.rule_config["type"].garbage_collect(endtime)
 
         num_matches = len(self.rule_config["type"].matches)
@@ -89,7 +88,7 @@ class Rule:
             "@timestamp": ts_now(),
             "time_taken": time_taken,
         }
-        return body  # TODO info: replaced writeback with return
+        self.writeback("elastalert_status", body)
 
     def process_matches(self):
 
@@ -135,7 +134,7 @@ class Rule:
         if silence_cache_key in self.silence_cache:
             if ts_now() < self.silence_cache[silence_cache_key][0]:
                 return True
-        if Config().conf["debug"]:
+        if config.get_config()["debug"]:
             return False
 
         query = {
@@ -145,7 +144,7 @@ class Rule:
         try:
             res = self.writeback_es.search(
                 index=self.writeback_es.resolve_writeback_index(
-                    Config().conf["writeback_index"], "silence"
+                    config.get_config()["writeback_index"], "silence"
                 ),
                 body=query,
                 ignore_unavailable=True,
@@ -241,7 +240,7 @@ class Rule:
                     return None
 
         # Don't send real alerts in debug mode
-        if Config().conf["debug"]:
+        if config.get_config()["debug"]:
             alerter = DebugAlerter(self.rule_config)
             alerter.alert(matches)
             return None
@@ -278,3 +277,30 @@ class Rule:
             res = self.writeback("elastalert", alert_body, self.rule_config)
             if res and not agg_id:
                 agg_id = res["_id"]
+
+    def writeback(self, doc_type, body, rule=None, match_body=None):
+        writeback_body = body
+
+        for key in list(writeback_body.keys()):
+            # Convert any datetime objects to timestamps
+            if isinstance(writeback_body[key], datetime.datetime):
+                writeback_body[key] = dt_to_ts(writeback_body[key])
+
+        if config.get_config()["debug"]:
+            log.info("Skipping writing to ES: %s" % (writeback_body))
+            return None
+
+        if "@timestamp" not in writeback_body:
+            writeback_body["@timestamp"] = dt_to_ts(ts_now())
+
+        try:
+            index = self.writeback_es.resolve_writeback_index(
+                config.get_config()["writeback_index"], doc_type
+            )
+            if self.writeback_es.is_atleastsixtwo():
+                res = self.writeback_es.index(index=index, body=body)
+            else:
+                res = self.writeback_es.index(index=index, doc_type=doc_type, body=body)
+            return res
+        except ElasticsearchException as e:
+            log.exception("Error writing alert info to Elasticsearch: %s" % (e))

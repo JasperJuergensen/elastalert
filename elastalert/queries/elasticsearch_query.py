@@ -2,7 +2,7 @@ import copy
 import logging
 from typing import List, Union
 
-from elastalert.config import Config
+from elastalert import config
 from elastalert.exceptions import EARuntimeException
 from elastalert.queries import BaseQuery
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_now
@@ -28,7 +28,7 @@ class ElasticsearchQuery(BaseQuery):
         self.num_hits = 0
         self.num_dupes = 0
         self.persistent.setdefault("processed_hits", {})
-        self.es = elasticsearch_client(Config().conf)
+        self.es = elasticsearch_client(config.get_config())
 
     def build_query(self, sort: bool = True):
         self.query = {"query": {"bool": {"filter": self.rule_config.get("filter", [])}}}
@@ -51,7 +51,7 @@ class ElasticsearchQuery(BaseQuery):
             )
         extra_args = {"_source_includes": self.rule_config["include"]}
         scroll_keepalive = self.rule_config.get(
-            "scroll_keepalive", Config().conf.get("scroll_keepalive", "30s")
+            "scroll_keepalive", config.get_config().get("scroll_keepalive", "30s")
         )
         try:
             log.debug("Running query: %s", self.query)
@@ -62,7 +62,8 @@ class ElasticsearchQuery(BaseQuery):
                     scroll=scroll_keepalive,
                     index=self.rule_config["index"],
                     size=self.rule_config.get(
-                        "max_query_size", Config().conf.get("max_query_size", 10000)
+                        "max_query_size",
+                        config.get_config().get("max_query_size", 10000),
                     ),
                     body=self.query,
                     ignore_unavailable=True,
@@ -111,7 +112,7 @@ class ElasticsearchQuery(BaseQuery):
         self.num_hits += len(hits)
         lt = self.rule_config.get("use_local_time")
         log.info(
-            "Queried rule %s from %s to %s: %s / %s hits (scrolling %s from )",
+            "Queried rule %s on %s from %s to %s: %s / %s hits (scrolling %s from )",
             self.rule_config["name"],
             self.rule_config["index"],
             pretty_ts(starttime, lt),
@@ -154,15 +155,18 @@ class ElasticsearchQuery(BaseQuery):
         return self.num_hits
 
     def remove_duplicates(self, data: List[dict]) -> List[dict]:
-        new_events_dict = {
-            event: lookup_es_key(
+        new_events = []
+        for event in data:
+            if event["_id"] in self.persistent["processed_hits"]:
+                continue
+
+            # Remember the new data's IDs
+            self.persistent["processed_hits"][event["_id"]] = lookup_es_key(
                 event, self.rule_config.get("timestamp_field", "@timestamp")
             )
-            for event in data
-            if event["_id"] not in self.persistent["processed_hits"]
-        }
-        self.persistent["processed_hits"].update(new_events_dict)
-        return list(new_events_dict.keys())
+            new_events.append(event)
+
+        return new_events
 
     @staticmethod
     def process_hits(rule_config: dict, hits) -> List[dict]:

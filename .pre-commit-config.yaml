@@ -28,11 +28,11 @@ repos:
     rev: 1.6.2
     hooks:
     - id: bandit
-      exclude: tests/.*
+      exclude: tests/.*|tests_old/.*
       args: ['-b', '.bandit_baseline.json', '-c', '.bandit.yaml']
 -   repo: https://github.com/Yelp/detect-secrets
     rev: v0.13.1
     hooks:
     -   id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
-        exclude: .*tests/.*|.*yelp/testing/.*|\.pre-commit-config\.yaml
+        exclude: .*tests/.*|tests_old/.*|.*yelp/testing/.*|\.pre-commit-config\.yaml

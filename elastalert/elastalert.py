@@ -1,4 +1,3 @@
-import argparse
 import datetime
 import logging
 import os
@@ -18,7 +17,7 @@ import dateutil.tz
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from croniter import croniter
-from elastalert.config import Config
+from elastalert import config
 from elastalert.exceptions import EAConfigException, EARuntimeException
 from elastalert.loaders import loader_mapping
 from elastalert.utils.elastic import get_aggregation_key_value
@@ -31,13 +30,12 @@ from elastalert.utils.util import (
     get_module,
     lookup_es_key,
     parse_deadline,
-    parse_duration,
     total_seconds,
     ts_now,
 )
 from elasticsearch.exceptions import ConnectionError, ElasticsearchException
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("elastalert")
 
 
 class ElastAlerter(object):
@@ -55,89 +53,13 @@ class ElastAlerter(object):
 
     thread_data = threading.local()
 
-    def parse_args(self, args):
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--config",
-            action="store",
-            dest="config",
-            default="config.yaml",
-            help="Global config file (default: config.yaml)",
-        )
-        parser.add_argument(
-            "--debug",
-            action="store_true",
-            dest="debug",
-            help="Suppresses alerts and prints information instead. "
-            "Not compatible with `--verbose`",
-        )
-        parser.add_argument(
-            "--rule",
-            dest="rule",
-            help="Run only a specific rule (by filename, must still be in rules folder)",
-        )
-        parser.add_argument(
-            "--silence",
-            dest="silence",
-            help="Silence rule for a time period. Must be used with --rule. Usage: "
-            "--silence <units>=<number>, eg. --silence hours=2",
-        )
-        parser.add_argument(
-            "--start",
-            dest="start",
-            help="YYYY-MM-DDTHH:MM:SS Start querying from this timestamp. "
-            'Use "NOW" to start from current time. (Default: present)',
-        )
-        parser.add_argument(
-            "--end",
-            dest="end",
-            help="YYYY-MM-DDTHH:MM:SS Query to this timestamp. (Default: present)",
-        )
-        parser.add_argument(
-            "--verbose",
-            action="store_true",
-            dest="verbose",
-            help="Increase verbosity without suppressing alerts. "
-            "Not compatible with `--debug`",
-        )
-        parser.add_argument(
-            "--patience",
-            action="store",
-            dest="timeout",
-            type=parse_duration,
-            default=datetime.timedelta(),
-            help="Maximum time to wait for ElasticSearch to become responsive.  Usage: "
-            "--patience <units>=<number>. e.g. --patience minutes=5",
-        )
-        parser.add_argument(
-            "--pin_rules",
-            action="store_true",
-            dest="pin_rules",
-            help="Stop ElastAlert from monitoring config file changes",
-        )
-        parser.add_argument(
-            "--es_debug",
-            action="store_true",
-            dest="es_debug",
-            help="Enable verbose logging from Elasticsearch queries",
-        )
-        parser.add_argument(
-            "--es_debug_trace",
-            action="store",
-            dest="es_debug_trace",
-            help="Enable logging from Elasticsearch queries as curl command. Queries will be logged to file. Note that "
-            "this will incorrectly display localhost:9200 as the host/port",
-        )
-        self.args = parser.parse_args(args)
-
     def __init__(self, args):
-        self.parse_args(args)
-
         try:
-            self.conf = Config(self.args).conf
+            config.config = config.load_config(args)
         except EAException as e:
             log.exception("Can't load config: %s", e)
             exit(1)
+        self.conf = config.get_config()
         # Initialise the rule loader and load each rule configuration
         rules_loader_class = loader_mapping.get(
             self.conf["rules_loader"]
@@ -145,7 +67,7 @@ class ElastAlerter(object):
         rules_loader = rules_loader_class(self.conf)
         # Make sure we have all the required globals for the loader
         # Make sure we have all required globals
-        if rules_loader.required_globals - frozenset(list(self.conf.keys())):
+        if len(rules_loader.required_globals - frozenset(list(self.conf.keys()))) != 0:
             raise EAConfigException(
                 "Config must contain %s"
                 % (
@@ -156,7 +78,7 @@ class ElastAlerter(object):
                 )
             )
         self.rules_loader = rules_loader
-        self.rules = self.rules_loader.load(self.conf, self.args)
+        self.rules = self.rules_loader.load(self.conf)
 
         log.info("%s rules loaded", len(self.rules))
 
@@ -172,8 +94,10 @@ class ElastAlerter(object):
         self.smtp_host = self.conf.get("smtp_host", "localhost")
         self.max_aggregation = self.conf.get("max_aggregation", 10000)
         self.buffer_time = self.conf["buffer_time"]
-        self.rule_hashes = self.rules_loader.get_hashes(self.conf, self.args.rule)
-        self.starttime = self.args.start
+        self.rule_hashes = self.rules_loader.get_hashes(
+            self.conf, self.conf["args"].rule
+        )
+        self.starttime = self.conf["args"].start
         self.disabled_rules = {}
         self.replace_dots_in_field_names = self.conf.get(
             "replace_dots_in_field_names", False
@@ -191,7 +115,7 @@ class ElastAlerter(object):
         for rule in self.rules.values():
             self.init_rule(rule)
 
-        if self.args.silence:
+        if self.conf["args"].silence:
             self.silence()
 
     def remove_old_events(self, rule):
@@ -206,7 +130,7 @@ class ElastAlerter(object):
                 remove.append(_id)
         list(map(rule["processed_hits"].pop, remove))
 
-    def init_rule(self, rule_config, new=True) -> dict:
+    def init_rule(self, rule_config: dict, new=True) -> dict:
         """ Copies some necessary non-config state from an exiting rule to a new rule. """
         if not new:
             self.scheduler.remove_job(job_id=rule_config["name"])
@@ -280,7 +204,7 @@ class ElastAlerter(object):
 
         for rule in self.rules.values():
             rule["initial_starttime"] = self.starttime
-        self.wait_until_responsive(timeout=self.args.timeout)
+        self.wait_until_responsive(timeout=self.conf["args"].timeout)
         self.running = True
         log.info("Starting up")
         self.scheduler.add_job(
@@ -289,7 +213,7 @@ class ElastAlerter(object):
             seconds=self.run_every.total_seconds(),
             id="_internal_handle_pending_alerts",
         )
-        if not self.args.pin_rules:
+        if not self.conf["args"].pin_rules:
             self.scheduler.add_job(
                 self.handle_config_change,
                 "interval",
@@ -301,8 +225,8 @@ class ElastAlerter(object):
             next_run = datetime.datetime.utcnow() + self.run_every
 
             # Quit after end_time has been reached
-            if self.args.end:
-                endtime = ts_to_dt(self.args.end)
+            if self.conf["args"].end:
+                endtime = ts_to_dt(self.conf["args"].end)
 
                 if next_run.replace(tzinfo=dateutil.tz.tzutc()) > endtime:
                     exit(0)
@@ -361,7 +285,9 @@ class ElastAlerter(object):
         )
 
     def handle_config_change(self):
-        new_rule_hashes = self.rules_loader.get_hashes(self.conf, self.args.rule)
+        new_rule_hashes = self.rules_loader.get_hashes(
+            self.conf, self.conf["args"].rule
+        )
 
         # Check each current rule for changes
         for rule_name, hash_value in self.rule_hashes.items():
@@ -397,7 +323,7 @@ class ElastAlerter(object):
                 self.rules[rule_name] = self.init_rule(new_rule, False)
 
         # Load new rules
-        if not self.args.rule:
+        if not self.conf["args"].rule:
             for rule_name in set(new_rule_hashes.keys()) - set(self.rule_hashes.keys()):
                 try:
                     new_rule = self.rules_loader.get_rule_config(rule_name, self.conf)
@@ -424,8 +350,8 @@ class ElastAlerter(object):
         next_run = datetime.datetime.utcnow() + rule_config["run_every"]
         # Set endtime based on the rule's delay
         delay = rule_config.get("query_delay")
-        if hasattr(self.args, "end") and self.args.end:
-            endtime = ts_to_dt(self.args.end)
+        if hasattr(self.conf["args"], "end") and self.conf["args"].end:
+            endtime = ts_to_dt(self.conf["args"].end)
         elif delay:
             endtime = ts_now() - delay
         else:
@@ -881,7 +807,7 @@ class ElastAlerter(object):
             log.error("--silence not compatible with --debug")
             exit(1)
 
-        if not self.args.rule:
+        if not self.conf["args"].rule:
             log.error("--silence must be used with --rule")
             exit(1)
 
@@ -890,9 +816,9 @@ class ElastAlerter(object):
             silence_cache_key = self.rules.values()[0]["name"] + "._silence"
 
         try:
-            silence_ts = parse_deadline(self.args.silence)
+            silence_ts = parse_deadline(self.conf["args"].silence)
         except (ValueError, TypeError):
-            log.error("%s is not a valid time period" % (self.args.silence))
+            log.error("%s is not a valid time period" % (self.conf["args"].silence))
             exit(1)
 
         if not self.rules.values()[0]["type"].set_realert(
@@ -949,7 +875,7 @@ class ElastAlerter(object):
             if self.disable_rules_on_error:
                 modified = (
                     " or if the rule config file has been modified"
-                    if not self.args.pin_rules
+                    if not self.conf["args"].pin_rules
                     else ""
                 )
                 email_body += (
@@ -993,7 +919,7 @@ def main(args=None):
     if not args:
         args = sys.argv[1:]
     client = ElastAlerter(args)
-    if not client.args.silence:
+    if not client.conf["args"].silence:
         client.start()
 
 

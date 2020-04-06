@@ -94,7 +94,7 @@ class RulesLoader(metaclass=ABCMeta):
 
         self.base_config = copy.deepcopy(conf)
 
-    def load(self, conf: dict, args=None) -> Dict[str, dict]:
+    def load(self, conf: dict) -> Dict[str, dict]:
         # TODO rule_name as argument
         rule_configs = self.get_rule_configs(conf)
         loaded_rule_configs = dict()
@@ -104,6 +104,7 @@ class RulesLoader(metaclass=ABCMeta):
             except EAConfigException as e:
                 log.error("Invalid rule % skipped: %s", rule_name, e)
                 continue
+            rule_name = rule_config["name"]
             if "is_enabled" in rule_config and not rule_config["is_enabled"]:
                 log.debug("Diabled rule %s", rule_name)
                 continue
