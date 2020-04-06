@@ -14,7 +14,7 @@ install-hooks:
 	pre-commit install -f --install-hooks
 
 test:
-	tox
+	tox -- --ignore=tests_old
 
 test-elasticsearch:
 	tox -- --runelasticsearch
