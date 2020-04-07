@@ -1,21 +1,33 @@
 import copy
 import time
+from typing import Union
 
 from elasticsearch import Elasticsearch, RequestsHttpConnection, TransportError
 from elasticsearch.client import _make_path, query_params
 
 
-class Singleton(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class ElasticSearchClient(Elasticsearch, metaclass=Singleton):
+class ElasticSearchClient(Elasticsearch):
     """ Extension of low level :class:`Elasticsearch` client with additional version resolving features """
+
+    _cache = {}
+
+    @classmethod
+    def __get_cache(cls, host: str, port: int) -> Union[None, "ElasticSearchClient"]:
+        if f"{host}:{port}" in cls._cache:
+            return cls._cache[f"{host}:{port}"]
+        return None
+
+    @classmethod
+    def __add_cache(cls, host: str, port: int, o: "ElasticSearchClient"):
+        cls._cache[f"{host}:{port}"] = o
+
+    def __new__(cls, *args, **kwargs) -> "ElasticSearchClient":
+        client = cls.__get_cache(args[0]["es_host"], args[0]["es_port"])
+        if client:
+            return client
+        client = super(ElasticSearchClient, cls).__new__(cls)
+        cls.__add_cache(args[0]["es_host"], args[0]["es_port"], client)
+        return client
 
     def __init__(self, conf):
         """

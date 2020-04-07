@@ -182,16 +182,6 @@ def format_index(index, start, end, add_extra=False):
     return ",".join(indices)
 
 
-def cronite_datetime_to_timestamp(self, d):
-    """
-    Converts a `datetime` object `d` into a UNIX timestamp.
-    """
-    if d.tzinfo is not None:
-        d = d.replace(tzinfo=None) - d.utcoffset()
-
-    return total_seconds((d - datetime.datetime(1970, 1, 1)))
-
-
 def add_raw_postfix(field, is_five_or_above):
     if is_five_or_above:
         end = ".keyword"

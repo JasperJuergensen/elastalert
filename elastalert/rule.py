@@ -3,13 +3,26 @@ import logging
 import time
 from typing import List, Tuple
 
+from croniter import croniter
 from elastalert import config
 from elastalert.alerter import DebugAlerter
 from elastalert.enhancements.drop_match_exception import DropMatchException
 from elastalert.exceptions import EAException, EARuntimeException
-from elastalert.utils.elastic import get_query_key_value
-from elastalert.utils.time import dt_to_ts, seconds, total_seconds, ts_now, ts_to_dt
-from elastalert.utils.util import elasticsearch_client, get_segment_size, set_starttime
+from elastalert.utils.elastic import get_aggregation_key_value, get_query_key_value
+from elastalert.utils.time import (
+    dt_to_ts,
+    seconds,
+    total_seconds,
+    ts_now,
+    ts_to_dt,
+    unix_to_dt,
+)
+from elastalert.utils.util import (
+    elasticsearch_client,
+    get_segment_size,
+    lookup_es_key,
+    set_starttime,
+)
 from elasticsearch import ElasticsearchException
 
 log = logging.getLogger(__name__)
@@ -23,6 +36,7 @@ class Rule:
         self.rule_config = rule_config
         self.silence_cache = {}
         self.writeback_es = elasticsearch_client(config.get_config())
+        self.alerts_sent = 0
 
     def run_rule(self, endtime=None, starttime=None):
         """"""
@@ -210,7 +224,7 @@ class Rule:
         }
 
         self.silence_cache[silence_cache_key] = (timestamp, exponent)
-        return self.writeback("silence", body)  # TODO get writeback
+        return self.writeback("silence", body)
 
     def send_alert(self, matches: List, alert_time=None, retried: bool = False):
         """ Send out an alert.
@@ -262,7 +276,7 @@ class Rule:
                     original_exception=e,
                 )
             else:
-                self.thread_data.alerts_sent += 1  # TODO
+                self.alerts_sent += 1  # TODO
                 alert_sent = True
 
         # Write the alert(s) to ES
@@ -277,6 +291,163 @@ class Rule:
             res = self.writeback("elastalert", alert_body, self.rule_config)
             if res and not agg_id:
                 agg_id = res["_id"]
+
+    def add_aggregated_alert(self, match, rule):
+        """ Save a match as a pending aggregate alert to Elasticsearch. """
+
+        # Optionally include the 'aggregation_key' as a dimension for aggregations
+        aggregation_key_value = get_aggregation_key_value(rule, match)
+
+        if not rule["current_aggregate_id"].get(aggregation_key_value) or (
+            "aggregate_alert_time" in rule
+            and aggregation_key_value in rule["aggregate_alert_time"]
+            and rule["aggregate_alert_time"].get(aggregation_key_value)
+            < ts_to_dt(lookup_es_key(match, rule["timestamp_field"]))
+        ):
+
+            # ElastAlert may have restarted while pending alerts exist
+            pending_alert = self.find_pending_aggregate_alert(
+                rule, aggregation_key_value
+            )
+            if pending_alert:
+                alert_time = ts_to_dt(pending_alert["_source"]["alert_time"])
+                rule["aggregate_alert_time"][aggregation_key_value] = alert_time
+                agg_id = pending_alert["_id"]
+                rule["current_aggregate_id"] = {aggregation_key_value: agg_id}
+                log.info(
+                    "Adding alert for %s to aggregation(id: %s, aggregation_key: %s), next alert at %s"
+                    % (rule["name"], agg_id, aggregation_key_value, alert_time)
+                )
+            else:
+                # First match, set alert_time
+                alert_time = ""
+                if isinstance(rule["aggregation"], dict) and rule["aggregation"].get(
+                    "schedule"
+                ):
+                    try:
+                        iter = croniter(rule["aggregation"]["schedule"], ts_now())
+                        alert_time = unix_to_dt(iter.get_next())
+                    except Exception as e:
+                        raise EARuntimeException(
+                            "Error parsing aggregate send time Cron format %s" % e,
+                            rule=rule,
+                            original_exception=e,
+                        )
+                else:
+                    if rule.get("aggregate_by_match_time", False):
+                        match_time = ts_to_dt(
+                            lookup_es_key(match, rule["timestamp_field"])
+                        )
+                        alert_time = match_time + rule["aggregation"]
+                    else:
+                        alert_time = ts_now() + rule["aggregation"]
+
+                rule["aggregate_alert_time"][aggregation_key_value] = alert_time
+                agg_id = None
+                log.info(
+                    "New aggregation for %s, aggregation_key: %s. next alert at %s."
+                    % (rule["name"], aggregation_key_value, alert_time)
+                )
+        else:
+            # Already pending aggregation, use existing alert_time
+            alert_time = rule["aggregate_alert_time"].get(aggregation_key_value)
+            agg_id = rule["current_aggregate_id"].get(aggregation_key_value)
+            log.info(
+                "Adding alert for %s to aggregation(id: %s, aggregation_key: %s), next alert at %s"
+                % (rule["name"], agg_id, aggregation_key_value, alert_time)
+            )
+
+        alert_body = self.get_alert_body(match, rule, False, alert_time)
+        if agg_id:
+            alert_body["aggregate_id"] = agg_id
+        if aggregation_key_value:
+            alert_body["aggregation_key"] = aggregation_key_value
+        res = self.writeback("elastalert", alert_body, rule)
+
+        # If new aggregation, save _id
+        if res and not agg_id:
+            rule["current_aggregate_id"][aggregation_key_value] = res["_id"]
+
+        # Couldn't write the match to ES, save it in memory for now
+        if not res:
+            rule["agg_matches"].append(match)
+
+        return res
+
+    def find_pending_aggregate_alert(self, rule_config, aggregation_key_value=None):
+        query = {
+            "filter": {
+                "bool": {
+                    "must": [
+                        {"term": {"rule_name": rule_config["name"]}},
+                        {"range": {"alert_time": {"gt": ts_now()}}},
+                        {"term": {"alert_sent": "false"}},
+                    ],
+                    "must_not": [{"exists": {"field": "aggregate_id"}}],
+                }
+            }
+        }
+        if aggregation_key_value:
+            query["filter"]["bool"]["must"].append(
+                {"term": {"aggregation_key": aggregation_key_value}}
+            )
+        if self.writeback_es.is_atleastfive():
+            query = {"query": {"bool": query}}
+        query["sort"] = {"alert_time": {"order": "desc"}}
+        try:
+            if self.writeback_es.is_atleastsixtwo():
+                res = self.writeback_es.search(
+                    index=config.get_config()["writeback_index"], body=query, size=1
+                )
+            else:
+                res = self.writeback_es.deprecated_search(
+                    index=config.get_config()["writeback_index"],
+                    doc_type="elastalert",
+                    body=query,
+                    size=1,
+                )
+            if len(res["hits"]["hits"]) == 0:
+                return None
+        except (KeyError, ElasticsearchException) as e:
+            raise EARuntimeException(
+                "Error searching for pending aggregated matches",
+                rule=rule_config,
+                query=query,
+                original_exception=e,
+            )
+
+        return res["hits"]["hits"][0]
+
+    def get_alert_body(self, match, rule, alert_sent, alert_time, alert_exception=None):
+        body = {
+            "match_body": match,
+            "rule_name": rule["name"],
+            "alert_info": rule["alert"][0].get_info()
+            if not config.get_config()["debug"]
+            else {},
+            "alert_sent": alert_sent,
+            "alert_time": alert_time,
+        }
+
+        if rule.get("include_match_in_root"):
+            body.update({k: v for k, v in match.items() if not k.startswith("_")})
+
+        if config.get_config().get("add_metadata_alert"):
+            body["category"] = rule["category"]
+            body["description"] = rule["description"]
+            body["owner"] = rule["owner"]
+            body["priority"] = rule["priority"]
+
+        match_time = lookup_es_key(match, rule["timestamp_field"])
+        if match_time is not None:
+            body["match_time"] = match_time
+
+        # TODO record info about multiple alerts
+
+        # If the alert failed to send, record the exception
+        if not alert_sent:
+            body["alert_exception"] = alert_exception
+        return body
 
     def writeback(self, doc_type, body, rule=None, match_body=None):
         writeback_body = body
