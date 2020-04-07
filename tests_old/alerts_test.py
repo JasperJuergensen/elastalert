@@ -1189,6 +1189,7 @@ def test_jira_arbitrary_field_support():
         )
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 def test_kibana(ea):
     rule = {
         "filter": [{"query": {"query_string": {"query": "xy:z"}}}],

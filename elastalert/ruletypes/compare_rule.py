@@ -8,7 +8,7 @@ from elastalert.ruletypes import RuleType
 class CompareRule(RuleType, metaclass=ABCMeta):
     """ A base class for matching a specific term by passing it to a compare function """
 
-    def __init__(self, rule_config):
+    def __init__(self, rule_config, args=None):
         super().__init__(rule_config)
         self.query_factory = QueryFactory(
             ElasticsearchQuery, rule_config, self.add_data

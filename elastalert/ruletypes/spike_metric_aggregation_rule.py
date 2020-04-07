@@ -112,3 +112,6 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
             self.rules["timeframe"],
         )
         return message
+
+    def check_matches(self, timestamp, query_key, aggregation_data):
+        raise NotImplementedError

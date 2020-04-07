@@ -7,7 +7,7 @@ import elastalert.ruletypes
 import mock
 import pytest
 from elastalert import config
-from elastalert.loaders import FileRulesLoader
+from elastalert.loaders import FileRulesLoader, loader_mapping
 from elastalert.utils.util import EAException
 
 test_config = {
@@ -59,7 +59,9 @@ def test_import_rules():
             # Test that type is imported
             with mock.patch("builtins.__import__") as mock_import:
                 mock_import.return_value = elastalert.ruletypes
-                rules_loader.get_rule_configs(test_config)
+                rule_config = rules_loader.get_rule_configs(test_config)
+                print(rule_config)
+            print(mock_import.call_args_list)
             assert mock_import.call_args_list[0][0][0] == "testing.test"
             assert mock_import.call_args_list[0][0][3] == ["RuleType"]
 
@@ -88,16 +90,16 @@ def test_import_import():
 
     with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
         with mock.patch.object(rules_loader, "get_names") as mock_names:
-            mock_names.return_value = ["test_rule"]
+            mock_names.return_value = ["blah.yaml"]
             mock_open.side_effect = [import_rule, import_me]
             rules = rules_loader.get_rule_configs(test_config)
             assert mock_open.call_args_list[0][0] == ("blah.yaml",)
             assert mock_open.call_args_list[1][0] == ("importme.ymlt",)
             assert len(mock_open.call_args_list) == 2
-            assert rules["es_port"] == 12349
-            assert rules["es_host"] == "imported_host"
-            assert rules["email"] == ["test@test.test"]
-            assert rules["filter"] == import_rule["filter"]
+            assert rules["blah.yaml"]["es_port"] == 12349
+            assert rules["blah.yaml"]["es_host"] == "imported_host"
+            assert rules["blah.yaml"]["email"] == "test@test.test"
+            assert rules["blah.yaml"]["filter"] == import_rule["filter"]
 
             # check global import_rule dependency
             assert rules_loader.import_rules == {"blah.yaml": ["importme.ymlt"]}
@@ -117,16 +119,16 @@ def test_import_absolute_import():
 
     with mock.patch.object(rules_loader, "get_rule_config") as mock_open:
         with mock.patch.object(rules_loader, "get_names") as mock_names:
-            mock_names.return_value = ["test_rule"]
+            mock_names.return_value = ["blah.yaml"]
             mock_open.side_effect = [import_rule, import_me]
             rules = rules_loader.get_rule_configs(test_config)
             assert mock_open.call_args_list[0][0] == ("blah.yaml",)
             assert mock_open.call_args_list[1][0] == ("/importme.ymlt",)
             assert len(mock_open.call_args_list) == 2
-            assert rules["es_port"] == 12349
-            assert rules["es_host"] == "imported_host"
-            assert rules["email"] == ["test@test.test"]
-            assert rules["filter"] == import_rule["filter"]
+            assert rules["blah.yaml"]["es_port"] == 12349
+            assert rules["blah.yaml"]["es_host"] == "imported_host"
+            assert rules["blah.yaml"]["email"] == "test@test.test"
+            assert rules["blah.yaml"]["filter"] == import_rule["filter"]
 
 
 def test_import_filter():
@@ -148,13 +150,13 @@ def test_import_filter():
             mock_names.return_value = ["test_rule"]
             mock_open.side_effect = [import_rule, import_me]
             rules = rules_loader.get_rule_configs(test_config)
-            assert rules["filter"] == [
+            assert rules["test_rule"]["filter"] == [
                 {"term": {"ratchet": "clank"}},
                 {"term": {"key": "value"}},
             ]
 
 
-def test_load_inline_alert_rule():
+def test_load_inline_alert_rule(ea):
     rules_loader = FileRulesLoader(test_config)
     test_rule_copy = copy.deepcopy(test_rule)
     test_rule_copy["alert"] = [
@@ -216,139 +218,133 @@ def test_file_rules_loader_get_names():
     assert "root/b.yaml" in paths
     assert len(paths) == 2
 
+def setup_test_config():
 
-def test_load_rules():
-    test_rule_copy = copy.deepcopy(test_rule)
-    test_config_copy = copy.deepcopy(test_config)
+    config_obj = config.load_config(["--config", "test_config"])
+    config.config = config_obj
+    return config_obj
+
+def get_test_rule(config_obj):
+
+    rules_loader_class = loader_mapping.get(config_obj['rules_loader'])
+    rules_loader = rules_loader_class(config_obj)
+    config_obj["rules"] = rules_loader.load(config_obj)
+    rules = config_obj["rules"]
+    if len(rules) == 0:
+        return None
+    return config_obj["rules"]['testrule']
+
+
+def configure_load_rule_and_validate(test_config, test_rule, validation):
+
     with mock.patch("elastalert.config.yaml_loader") as mock_conf_open:
-        mock_conf_open.return_value = test_config_copy
+        mock_conf_open.return_value = test_config
         with mock.patch(
             "elastalert.loaders.file_rules_loader.yaml_loader"
         ) as mock_rule_open:
-            mock_rule_open.return_value = test_rule_copy
+            mock_rule_open.return_value = test_rule
 
             with mock.patch("os.walk") as mock_ls:
                 mock_ls.return_value = [("", [], ["testrule.yaml"])]
-                rules = config.get_config()
-                rules["rules"] = rules["rules_loader"].load(rules)
-                assert isinstance(
-                    rules["rules"][0]["type"], elastalert.ruletypes.RuleType
-                )
-                assert isinstance(
-                    rules["rules"][0]["alert"][0], elastalert.alerter.Alerter
-                )
-                assert isinstance(rules["rules"][0]["timeframe"], datetime.timedelta)
-                assert isinstance(rules["run_every"], datetime.timedelta)
-                for included_key in ["comparekey", "testkey", "@timestamp"]:
-                    assert included_key in rules["rules"][0]["include"]
+                conf_obj = setup_test_config()
+                rule_obj = get_test_rule(conf_obj)
+                validation(rule_obj)
 
-                # Assert include doesn't contain duplicates
-                assert rules["rules"][0]["include"].count("@timestamp") == 1
-                assert rules["rules"][0]["include"].count("comparekey") == 1
+
+def test_load_rules():
+
+    test_rule_copy = copy.deepcopy(test_rule)
+    test_config_copy = copy.deepcopy(test_config)
+
+    def validation(rule_obj):
+        assert isinstance(
+            rule_obj["type"], elastalert.ruletypes.RuleType
+        )
+        assert isinstance(
+            rule_obj["alert"][0], elastalert.alerter.Alerter
+        )
+        assert isinstance(rule_obj["timeframe"], datetime.timedelta)
+        assert isinstance(rule_obj["run_every"], datetime.timedelta)
+        for included_key in ["comparekey", "testkey", "@timestamp"]:
+            assert included_key in rule_obj["include"]
+
+        # Assert include doesn't contain duplicates
+        assert rule_obj["include"].count("@timestamp") == 1
+        assert rule_obj["include"].count("comparekey") == 1
+
+    configure_load_rule_and_validate(test_config_copy, test_rule_copy, validation)
 
 
 def test_load_default_host_port():
+
     test_rule_copy = copy.deepcopy(test_rule)
+    test_config_copy = copy.deepcopy(test_config)
     test_rule_copy.pop("es_host")
     test_rule_copy.pop("es_port")
-    test_config_copy = copy.deepcopy(test_config)
-    with mock.patch("elastalert.config.yaml_loader") as mock_conf_open:
-        mock_conf_open.return_value = test_config_copy
-        with mock.patch(
-            "elastalert.loaders.file_rules_loader.yaml_loader"
-        ) as mock_rule_open:
-            mock_rule_open.return_value = test_rule_copy
 
-            with mock.patch("os.walk") as mock_ls:
-                mock_ls.return_value = [("", [], ["testrule.yaml"])]
-                rules = config.get_config()
-                rules["rules"] = rules["rules_loader"].load(rules)
+    def validation(rule_obj):
+        # Assert include doesn't contain duplicates
+        assert rule_obj["es_port"] == 12345
+        assert rule_obj["es_host"] == "elasticsearch.test"
 
-                # Assert include doesn't contain duplicates
-                assert rules["es_port"] == 12345
-                assert rules["es_host"] == "elasticsearch.test"
+    configure_load_rule_and_validate(test_config_copy, test_rule_copy, validation)
 
 
 def test_load_ssl_env_false():
     test_rule_copy = copy.deepcopy(test_rule)
+    test_config_copy = copy.deepcopy(test_config)
     test_rule_copy.pop("es_host")
     test_rule_copy.pop("es_port")
-    test_config_copy = copy.deepcopy(test_config)
-    with mock.patch("elastalert.config.yaml_loader") as mock_conf_open:
-        mock_conf_open.return_value = test_config_copy
-        with mock.patch(
-            "elastalert.loaders.file_rules_loader.yaml_loader"
-        ) as mock_rule_open:
-            mock_rule_open.return_value = test_rule_copy
 
-            with mock.patch("os.listdir") as mock_ls:
-                with mock.patch.dict(os.environ, {"ES_USE_SSL": "false"}):
-                    mock_ls.return_value = ["testrule.yaml"]
-                    rules = config.get_config()
-                    rules["rules"] = rules["rules_loader"].load(rules)
+    def validation(rule_obj):
+        # Assert include doesn't contain duplicates
+        assert rule_obj["use_ssl"] is False
 
-                    assert rules["use_ssl"] is False
+    with mock.patch.dict(os.environ, {"ES_USE_SSL": "false"}):
+        configure_load_rule_and_validate(test_config_copy, test_rule_copy, validation)
 
 
 def test_load_ssl_env_true():
     test_rule_copy = copy.deepcopy(test_rule)
+    test_config_copy = copy.deepcopy(test_config)
     test_rule_copy.pop("es_host")
     test_rule_copy.pop("es_port")
-    test_config_copy = copy.deepcopy(test_config)
-    with mock.patch("elastalert.config.yaml_loader") as mock_conf_open:
-        mock_conf_open.return_value = test_config_copy
-        with mock.patch(
-            "elastalert.loaders.file_rules_loader.yaml_loader"
-        ) as mock_rule_open:
-            mock_rule_open.return_value = test_rule_copy
 
-            with mock.patch("os.listdir") as mock_ls:
-                with mock.patch.dict(os.environ, {"ES_USE_SSL": "true"}):
-                    mock_ls.return_value = ["testrule.yaml"]
-                    rules = config.get_config()
-                    rules["rules"] = rules["rules_loader"].load(rules)
+    def validation(rule_obj):
+        # Assert include doesn't contain duplicates
+        assert rule_obj["use_ssl"] is True
 
-                    assert rules["use_ssl"] is True
+    with mock.patch.dict(os.environ, {"ES_USE_SSL": "true"}):
+        configure_load_rule_and_validate(test_config_copy, test_rule_copy, validation)
 
 
 def test_load_url_prefix_env():
+
     test_rule_copy = copy.deepcopy(test_rule)
+    test_config_copy = copy.deepcopy(test_config)
     test_rule_copy.pop("es_host")
     test_rule_copy.pop("es_port")
-    test_config_copy = copy.deepcopy(test_config)
-    with mock.patch("elastalert.config.yaml_loader") as mock_conf_open:
-        mock_conf_open.return_value = test_config_copy
-        with mock.patch(
-            "elastalert.loaders.file_rules_loader.yaml_loader"
-        ) as mock_rule_open:
-            mock_rule_open.return_value = test_rule_copy
 
-            with mock.patch("os.listdir") as mock_ls:
-                with mock.patch.dict(os.environ, {"ES_URL_PREFIX": "es/"}):
-                    mock_ls.return_value = ["testrule.yaml"]
-                    rules = config.get_config()
-                    rules["rules"] = rules["rules_loader"].load(rules)
+    def validation(rule_obj):
+        # Assert include doesn't contain duplicates
+        assert rule_obj["es_url_prefix"] == "es/"
 
-                    assert rules["es_url_prefix"] == "es/"
+    with mock.patch.dict(os.environ, {"ES_URL_PREFIX": "es/"}):
+        configure_load_rule_and_validate(test_config_copy, test_rule_copy, validation)
 
 
 def test_load_disabled_rules():
-    test_rule_copy = copy.deepcopy(test_rule)
-    test_rule_copy["is_enabled"] = False
-    test_config_copy = copy.deepcopy(test_config)
-    with mock.patch("elastalert.config.yaml_loader") as mock_conf_open:
-        mock_conf_open.return_value = test_config_copy
-        with mock.patch(
-            "elastalert.loaders.file_rules_loader.yaml_loader"
-        ) as mock_rule_open:
-            mock_rule_open.return_value = test_rule_copy
 
-            with mock.patch("os.listdir") as mock_ls:
-                mock_ls.return_value = ["testrule.yaml"]
-                rules = config.get_config()
-                rules["rules"] = rules["rules_loader"].load(rules)
-                # The rule is not loaded for it has "is_enabled=False"
-                assert len(rules["rules"]) == 0
+    test_rule_copy = copy.deepcopy(test_rule)
+    test_config_copy = copy.deepcopy(test_config)
+    test_rule_copy["is_enabled"] = False
+
+    def validation(rule_obj):
+        # Assert include doesn't contain duplicates
+        assert rule_obj is None
+
+    with mock.patch.dict(os.environ, {"ES_URL_PREFIX": "es/"}):
+        configure_load_rule_and_validate(test_config_copy, test_rule_copy, validation)
 
 
 def test_raises_on_missing_config():
@@ -373,19 +369,11 @@ def test_raises_on_missing_config():
         if key in optional_keys:
             continue
 
-        with mock.patch("elastalert.config.yaml_loader") as mock_conf_open:
-            mock_conf_open.return_value = test_config_copy
-            with mock.patch(
-                "elastalert.loaders.file_rules_loader.yaml_loader"
-            ) as mock_rule_open:
-                mock_rule_open.return_value = test_rule_copy
-                with mock.patch("os.walk") as mock_walk:
-                    mock_walk.return_value = [("", [], ["testrule.yaml"])]
-                    with pytest.raises(
-                        EAException, message="key %s should be required" % key
-                    ):
-                        rules = config.get_config()
-                        rules["rules"] = rules["rules_loader"].load(rules)
+        def validate(rule_obj):
+            pass
+
+        with pytest.raises(EAException, message="key %s should be required" % key):
+            configure_load_rule_and_validate(test_config_copy, test_rule_copy, validate)
 
 
 def test_compound_query_key():

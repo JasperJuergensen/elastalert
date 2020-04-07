@@ -157,7 +157,7 @@ def ea():
         "testrule": {
             "es_host": "",
             "es_port": 14900,
-            "name": "anytest",
+            "name": "testrule",
             "index": "idx",
             "filter": [],
             "include": ["@timestamp"],

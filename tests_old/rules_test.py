@@ -63,14 +63,14 @@ def assert_matches_have(matches, terms):
             assert match[term[2]] == term[3]
 
 
-def test_any():
+def test_any(ea):
     event = hits(1)
     rule = AnyRule({})
     rule.add_data([event])
     assert rule.matches == [event]
 
 
-def test_freq():
+def test_freq(ea):
     events = hits(60, timestamp_field="blah", username="qlo")
     rules = {
         "num_events": 59,
@@ -101,7 +101,7 @@ def test_freq():
     assert rule.occurrences == {}
 
 
-def test_freq_count():
+def test_freq_count(ea):
     rules = {
         "num_events": 100,
         "timeframe": datetime.timedelta(hours=1),
@@ -132,7 +132,7 @@ def test_freq_count():
     assert len(rule.matches) == 1
 
 
-def test_freq_out_of_order():
+def test_freq_out_of_order(ea):
     events = hits(60, timestamp_field="blah", username="qlo")
     rules = {
         "num_events": 59,
@@ -158,7 +158,7 @@ def test_freq_out_of_order():
     assert len(rule.matches) == 1
 
 
-def test_freq_terms():
+def test_freq_terms(ea):
     rules = {
         "num_events": 10,
         "timeframe": datetime.timedelta(hours=1),
@@ -199,7 +199,7 @@ def test_freq_terms():
     assert rule.matches[1].get("username") == "userA"
 
 
-def test_eventwindow():
+def test_eventwindow(ea):
     timeframe = datetime.timedelta(minutes=10)
     window = EventWindow(timeframe)
     timestamps = [
@@ -225,7 +225,7 @@ def test_eventwindow():
         assert actual[0]["@timestamp"] == exp
 
 
-def test_spike_count():
+def test_spike_count(ea):
     rules = {
         "threshold_ref": 10,
         "spike_height": 2,
@@ -253,7 +253,7 @@ def test_spike_count():
     assert len(rule.matches) == 1
 
 
-def test_spike_deep_key():
+def test_spike_deep_key(ea):
     rules = {
         "threshold_ref": 10,
         "spike_height": 2,
@@ -267,7 +267,7 @@ def test_spike_deep_key():
     assert "LOL" in rule.cur_windows
 
 
-def test_spike():
+def test_spike(ea):
     # Events are 1 per second
     events = hits(100, timestamp_field="ts")
 
@@ -336,7 +336,7 @@ def test_spike():
     assert len(rule.matches) == 1
 
 
-def test_spike_query_key():
+def test_spike_query_key(ea):
     events = hits(100, timestamp_field="ts", username="qlo")
     # Constant rate, doesn't match
     rules = {
@@ -373,7 +373,7 @@ def test_spike_query_key():
     assert len(rule.matches) == 1
 
 
-def test_spike_terms():
+def test_spike_terms(ea):
     rules = {
         "threshold_ref": 5,
         "spike_height": 2,
@@ -457,7 +457,7 @@ def test_spike_terms():
     assert rule.matches[0]["username"] == "userD"
 
 
-def test_spike_terms_query_key_alert_on_new_data():
+def test_spike_terms_query_key_alert_on_new_data(ea):
     rules = {
         "spike_height": 1.5,
         "timeframe": datetime.timedelta(minutes=10),
@@ -511,7 +511,7 @@ def test_spike_terms_query_key_alert_on_new_data():
     assert len(rule.matches) == 0
 
 
-def test_blacklist():
+def test_blacklist(ea):
     events = [
         {"@timestamp": ts_to_dt("2014-09-26T12:34:56Z"), "term": "good"},
         {"@timestamp": ts_to_dt("2014-09-26T12:34:57Z"), "term": "bad"},
@@ -529,7 +529,7 @@ def test_blacklist():
     assert_matches_have(rule.matches, [("term", "bad"), ("term", "really bad")])
 
 
-def test_whitelist():
+def test_whitelist(ea):
     events = [
         {"@timestamp": ts_to_dt("2014-09-26T12:34:56Z"), "term": "good"},
         {"@timestamp": ts_to_dt("2014-09-26T12:34:57Z"), "term": "bad"},
@@ -548,7 +548,7 @@ def test_whitelist():
     assert_matches_have(rule.matches, [("term", "bad"), ("term", "really bad")])
 
 
-def test_whitelist_dont_ignore_nulls():
+def test_whitelist_dont_ignore_nulls(ea):
     events = [
         {"@timestamp": ts_to_dt("2014-09-26T12:34:56Z"), "term": "good"},
         {"@timestamp": ts_to_dt("2014-09-26T12:34:57Z"), "term": "bad"},
@@ -570,7 +570,7 @@ def test_whitelist_dont_ignore_nulls():
     )
 
 
-def test_change():
+def test_change(ea):
     events = hits(10, username="qlo", term="good", second_term="yes")
     events[8].pop("term")
     events[8].pop("second_term")
@@ -617,7 +617,7 @@ def test_change():
     assert rule.matches == []
 
 
-def test_new_term():
+def test_new_term(ea):
     rules = {
         "fields": ["a", "b"],
         "timestamp_field": "@timestamp",
@@ -710,7 +710,7 @@ def test_new_term():
     assert rule.matches[0]["missing_field"] == "b"
 
 
-def test_new_term_nested_field():
+def test_new_term_nested_field(ea):
 
     rules = {
         "fields": ["a", "b.c"],
@@ -751,7 +751,7 @@ def test_new_term_nested_field():
     rule.matches = []
 
 
-def test_new_term_with_terms():
+def test_new_term_with_terms(ea):
     rules = {
         "fields": ["a"],
         "timestamp_field": "@timestamp",
@@ -808,7 +808,7 @@ def test_new_term_with_terms():
     assert rule.matches == []
 
 
-def test_new_term_with_composite_fields():
+def test_new_term_with_composite_fields(ea):
     rules = {
         "fields": [["a", "b", "c"], ["d", "e.f"]],
         "timestamp_field": "@timestamp",
@@ -911,7 +911,7 @@ def test_new_term_with_composite_fields():
     assert rule.matches[1]["missing_field"] == ("d", "e.f")
 
 
-def test_flatline():
+def test_flatline(ea):
     events = hits(40)
     rules = {
         "timeframe": datetime.timedelta(seconds=30),
@@ -952,7 +952,7 @@ def test_flatline():
     assert len(rule.matches) == 3
 
 
-def test_flatline_no_data():
+def test_flatline_no_data(ea):
     rules = {
         "timeframe": datetime.timedelta(seconds=30),
         "threshold": 2,
@@ -970,7 +970,7 @@ def test_flatline_no_data():
     assert len(rule.matches) == 1
 
 
-def test_flatline_count():
+def test_flatline_count(ea):
     rules = {
         "timeframe": datetime.timedelta(seconds=30),
         "threshold": 1,
@@ -987,7 +987,7 @@ def test_flatline_count():
     assert len(rule.matches) == 1
 
 
-def test_flatline_query_key():
+def test_flatline_query_key(ea):
     rules = {
         "timeframe": datetime.timedelta(seconds=30),
         "threshold": 1,
@@ -1028,7 +1028,7 @@ def test_flatline_query_key():
     )
 
 
-def test_flatline_forget_query_key():
+def test_flatline_forget_query_key(ea):
     rules = {
         "timeframe": datetime.timedelta(seconds=30),
         "threshold": 1,
@@ -1058,7 +1058,7 @@ def test_flatline_forget_query_key():
     assert rule.matches == []
 
 
-def test_cardinality_max():
+def test_cardinality_max(ea):
     rules = {
         "max_cardinality": 4,
         "timeframe": datetime.timedelta(minutes=10),
@@ -1099,7 +1099,7 @@ def test_cardinality_max():
         assert len(rule.matches) == 0
 
 
-def test_cardinality_min():
+def test_cardinality_min(ea):
     rules = {
         "min_cardinality": 4,
         "timeframe": datetime.timedelta(minutes=10),
@@ -1138,7 +1138,7 @@ def test_cardinality_min():
     assert len(rule.matches) == 1
 
 
-def test_cardinality_qk():
+def test_cardinality_qk(ea):
     rules = {
         "max_cardinality": 2,
         "timeframe": datetime.timedelta(minutes=10),
@@ -1177,7 +1177,7 @@ def test_cardinality_qk():
     assert rule.matches[1]["foo"] == "fiz"
 
 
-def test_cardinality_nested_cardinality_field():
+def test_cardinality_nested_cardinality_field(ea):
     rules = {
         "max_cardinality": 4,
         "timeframe": datetime.timedelta(minutes=10),
@@ -1224,7 +1224,7 @@ def test_cardinality_nested_cardinality_field():
         assert len(rule.matches) == 0
 
 
-def test_base_aggregation_constructor():
+def test_base_aggregation_constructor(ea):
     rules = {
         "bucket_interval_timedelta": datetime.timedelta(seconds=10),
         "buffer_time": datetime.timedelta(minutes=1),
@@ -1268,7 +1268,7 @@ def test_base_aggregation_constructor():
         rule = TestBaseAggregationRule(rules)
 
 
-def test_base_aggregation_payloads():
+def test_base_aggregation_payloads(ea):
     with mock.patch.object(
         TestBaseAggregationRule, "check_matches", return_value=None
     ) as mock_check_matches:
@@ -1324,7 +1324,7 @@ def test_base_aggregation_payloads():
         mock_check_matches.reset_mock()
 
 
-def test_metric_aggregation():
+def test_metric_aggregation(ea):
     rules = {
         "buffer_time": datetime.timedelta(minutes=5),
         "timestamp_field": "@timestamp",
@@ -1375,7 +1375,7 @@ def test_metric_aggregation():
     assert rule.matches[0]["qk"] == "qk_val"
 
 
-def test_metric_aggregation_complex_query_key():
+def test_metric_aggregation_complex_query_key(ea):
     rules = {
         "buffer_time": datetime.timedelta(minutes=5),
         "timestamp_field": "@timestamp",
@@ -1406,7 +1406,7 @@ def test_metric_aggregation_complex_query_key():
     assert rule.matches[1]["sub_qk"] == "sub_qk_val2"
 
 
-def test_percentage_match():
+def test_percentage_match(ea):
     rules = {
         "match_bucket_filter": {"term": "term_val"},
         "buffer_time": datetime.timedelta(minutes=5),

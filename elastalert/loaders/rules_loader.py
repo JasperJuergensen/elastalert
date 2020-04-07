@@ -50,6 +50,7 @@ class RulesLoader(metaclass=ABCMeta):
         "cardinality": ruletypes.CardinalityRule,
         "metric_aggregation": ruletypes.MetricAggregationRule,
         "percentage_match": ruletypes.PercentageMatchRule,
+        'spike_aggregation': ruletypes.SpikeMetricAggregationRule,
     }
 
     # Used to map names of alerts to their classes
@@ -156,14 +157,24 @@ class RulesLoader(metaclass=ABCMeta):
     def load_rule(self, rule_name: str, imports: list = None) -> dict:
         rule_config = self.get_rule_config(rule_name)
         if "import" in rule_config:
+            if imports is None:
+                imports = list()
+            rule_config['rule_file'] = rule_name
             import_rule_name = self.get_import_rule(rule_config)
             if import_rule_name in imports:
                 raise EAException("Import loop detected")
-            self.import_rules[rule_name] = import_rule_name
-            if imports is None:
-                imports = list()
+            self.import_rules.setdefault(rule_name, [])
+            self.import_rules[rule_name].append(import_rule_name)
             imports.append(import_rule_name)
-            rule_config.update(self.load_rule(import_rule_name, imports))
+            #rule_config.update(self.load_rule(import_rule_name, imports))
+            inner_rule = self.load_rule(import_rule_name, imports)
+
+            # Special case for merging filters - if both files specify a filter merge (AND) them
+            if 'filter' in inner_rule and 'filter' in rule_config:
+                rule_config['filter'] = inner_rule['filter']+ rule_config['filter']
+
+            inner_rule.update(rule_config)
+            rule_config = inner_rule
         return rule_config
 
     def parse_rule_config(self, rule_name: str, rule_config: dict, conf: dict):
@@ -431,7 +442,7 @@ class RulesLoader(metaclass=ABCMeta):
             )
         # Instantiate rule
         try:
-            rule_config["type"] = rule_config["type"](rule_config)
+            rule_config["type"] = rule_config['type'](rule_config, args)
         except (KeyError, EAException) as e:
             raise EAConfigException(
                 "Error initializing rule %s: %s" % (rule_config["name"], e)
