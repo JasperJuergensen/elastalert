@@ -21,14 +21,12 @@ from elastalert import config
 from elastalert.exceptions import EAConfigException, EARuntimeException
 from elastalert.loaders import loader_mapping
 from elastalert.utils.elastic import get_aggregation_key_value
-from elastalert.utils.time import dt_to_ts, dt_to_unix, pretty_ts, ts_to_dt, unix_to_dt
+from elastalert.utils.time import dt_to_ts, dt_to_unix, pretty_ts, ts_to_dt
 from elastalert.utils.util import (
     EAException,
-    cronite_datetime_to_timestamp,
     elasticsearch_client,
     enhance_filter,
     get_module,
-    lookup_es_key,
     parse_deadline,
     total_seconds,
     ts_now,
@@ -452,35 +450,6 @@ class ElastAlerter(object):
         log.info("Sleeping for %s seconds" % (duration))
         time.sleep(duration)
 
-    def get_alert_body(self, match, rule, alert_sent, alert_time, alert_exception=None):
-        body = {
-            "match_body": match,
-            "rule_name": rule["name"],
-            "alert_info": rule["alert"][0].get_info() if not self.conf["debug"] else {},
-            "alert_sent": alert_sent,
-            "alert_time": alert_time,
-        }
-
-        if rule.get("include_match_in_root"):
-            body.update({k: v for k, v in match.items() if not k.startswith("_")})
-
-        if self.add_metadata_alert:
-            body["category"] = rule["category"]
-            body["description"] = rule["description"]
-            body["owner"] = rule["owner"]
-            body["priority"] = rule["priority"]
-
-        match_time = lookup_es_key(match, rule["timestamp_field"])
-        if match_time is not None:
-            body["match_time"] = match_time
-
-        # TODO record info about multiple alerts
-
-        # If the alert failed to send, record the exception
-        if not alert_sent:
-            body["alert_exception"] = alert_exception
-        return body
-
     def writeback(self, doc_type, body, rule=None, match_body=None):
         writeback_body = body
 
@@ -716,90 +685,6 @@ class ElastAlerter(object):
             return None
 
         return res["hits"]["hits"][0]
-
-    def add_aggregated_alert(self, match, rule):
-        """ Save a match as a pending aggregate alert to Elasticsearch. """
-
-        # Optionally include the 'aggregation_key' as a dimension for aggregations
-        aggregation_key_value = get_aggregation_key_value(rule, match)
-
-        if not rule["current_aggregate_id"].get(aggregation_key_value) or (
-            "aggregate_alert_time" in rule
-            and aggregation_key_value in rule["aggregate_alert_time"]
-            and rule["aggregate_alert_time"].get(aggregation_key_value)
-            < ts_to_dt(lookup_es_key(match, rule["timestamp_field"]))
-        ):
-
-            # ElastAlert may have restarted while pending alerts exist
-            pending_alert = self.find_pending_aggregate_alert(
-                rule, aggregation_key_value
-            )
-            if pending_alert:
-                alert_time = ts_to_dt(pending_alert["_source"]["alert_time"])
-                rule["aggregate_alert_time"][aggregation_key_value] = alert_time
-                agg_id = pending_alert["_id"]
-                rule["current_aggregate_id"] = {aggregation_key_value: agg_id}
-                log.info(
-                    "Adding alert for %s to aggregation(id: %s, aggregation_key: %s), next alert at %s"
-                    % (rule["name"], agg_id, aggregation_key_value, alert_time)
-                )
-            else:
-                # First match, set alert_time
-                alert_time = ""
-                if isinstance(rule["aggregation"], dict) and rule["aggregation"].get(
-                    "schedule"
-                ):
-                    croniter._datetime_to_timestamp = (
-                        cronite_datetime_to_timestamp  # For Python 2.6 compatibility
-                    )
-                    try:
-                        iter = croniter(rule["aggregation"]["schedule"], ts_now())
-                        alert_time = unix_to_dt(iter.get_next())
-                    except Exception as e:
-                        self.handle_error(
-                            "Error parsing aggregate send time Cron format %s" % (e),
-                            rule["aggregation"]["schedule"],
-                        )
-                else:
-                    if rule.get("aggregate_by_match_time", False):
-                        match_time = ts_to_dt(
-                            lookup_es_key(match, rule["timestamp_field"])
-                        )
-                        alert_time = match_time + rule["aggregation"]
-                    else:
-                        alert_time = ts_now() + rule["aggregation"]
-
-                rule["aggregate_alert_time"][aggregation_key_value] = alert_time
-                agg_id = None
-                log.info(
-                    "New aggregation for %s, aggregation_key: %s. next alert at %s."
-                    % (rule["name"], aggregation_key_value, alert_time)
-                )
-        else:
-            # Already pending aggregation, use existing alert_time
-            alert_time = rule["aggregate_alert_time"].get(aggregation_key_value)
-            agg_id = rule["current_aggregate_id"].get(aggregation_key_value)
-            log.info(
-                "Adding alert for %s to aggregation(id: %s, aggregation_key: %s), next alert at %s"
-                % (rule["name"], agg_id, aggregation_key_value, alert_time)
-            )
-
-        alert_body = self.get_alert_body(match, rule, False, alert_time)
-        if agg_id:
-            alert_body["aggregate_id"] = agg_id
-        if aggregation_key_value:
-            alert_body["aggregation_key"] = aggregation_key_value
-        res = self.writeback("elastalert", alert_body, rule)
-
-        # If new aggregation, save _id
-        if res and not agg_id:
-            rule["current_aggregate_id"][aggregation_key_value] = res["_id"]
-
-        # Couldn't write the match to ES, save it in memory for now
-        if not res:
-            rule["agg_matches"].append(match)
-
-        return res
 
     def silence(self, silence_cache_key=None):
         """ Silence an alert for a period of time. --silence and --rule must be passed as args. """
