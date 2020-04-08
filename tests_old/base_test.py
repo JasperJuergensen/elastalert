@@ -288,7 +288,15 @@ def test_duplicate_timestamps(ea):
 
 
 def test_match(ea, monkeypatch):
-    rule = ea.rules["testrule"].copy()
+    hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
+    ea.thread_data.current_es.search.return_value = hits
+    ea.rules[0]['type'].matches = [{'@timestamp': END}]
+    with mock.patch('elastalert.elastalert.elasticsearch_client'):
+        ea.run_rule(ea.rules[0], END, START)
+
+    ea.rules[0]['alert'][0].alert.called_with({'@timestamp': END_TIMESTAMP})
+    assert ea.rules[0]['alert'][0].alert.call_count == 1
+    # rule = ea.rules["testrule"].copy()
     # with mock.patch("elastalert.rule.elasticsearch_client"):
     #     with mock.patch("elastalert.queries.elasticsearch_query.elasticsearch_client") as q_el_client:
     #         q_el_client.search.return_value
