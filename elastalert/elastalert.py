@@ -544,9 +544,6 @@ class ElastAlerter(object):
                 # Original rule is missing, keep alert for later if rule reappears
                 continue
 
-            # Set current_es for top_count_keys query
-            self.thread_data.current_es = elasticsearch_client(rule)
-
             # Send the alert unless it's a future alert
             if ts_now() > ts_to_dt(alert_time):
                 aggregated_matches = self.get_aggregated_matches(_id)

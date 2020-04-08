@@ -8,11 +8,14 @@ from elastalert.utils.time import total_seconds, ts_to_dt
 
 
 class BaseAggregationRule(RuleType, metaclass=ABCMeta):
-    def __init__(self, *args):
-        super(BaseAggregationRule, self).__init__(*args)
-        self.query_factory = QueryFactory(
+
+    def init_query_factory(self):
+        return QueryFactory(
             ElasticsearchAggregationQuery, self.rule_config, self.add_aggregation_data
         )
+
+    def __init__(self, *args):
+        super(BaseAggregationRule, self).__init__(*args)
         bucket_interval = self.rules.get("bucket_interval")
         if bucket_interval:
             if "seconds" in bucket_interval:

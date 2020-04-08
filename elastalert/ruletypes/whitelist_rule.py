@@ -15,6 +15,4 @@ class WhitelistRule(CompareRule):
         term = lookup_es_key(event, self.rules["compare_key"])
         if term is None:
             return not self.rules["ignore_null"]
-        if term not in self.rules["whitelist"]:
-            return True
-        return False
+        return term not in self.rules["whitelist"]

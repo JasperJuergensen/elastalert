@@ -1,6 +1,7 @@
 import datetime
 import logging
 import time
+from abc import abstractmethod, abstractproperty
 from typing import List, Tuple
 
 from croniter import croniter
@@ -31,12 +32,18 @@ log = logging.getLogger(__name__)
 class Rule:
     """"""
 
+    @abstractmethod
+    def init_query_factory(self):
+        pass
+
+
     def __init__(self, rule_config: dict):
         """"""
         self.rule_config = rule_config
         self.silence_cache = {}
         self.writeback_es = elasticsearch_client(config.get_config())
         self.alerts_sent = 0
+        self.query_factory = self.init_query_factory()
 
     def run_rule(self, endtime=None, starttime=None):
         """"""
@@ -81,7 +88,8 @@ class Rule:
             else:
                 endtime = tmp_endtime
         else:
-            self.cumulative_hits += query.run(self.rule_config["starttime"], endtime)
+            # TODO evaluate if can be removed, if it is not an infinite loop is encountered
+            #self.cumulative_hits += query.run(self.rule_config["starttime"], endtime)
             self.rule_config["type"].garbage_collect(endtime)
 
         num_matches = len(self.rule_config["type"].matches)

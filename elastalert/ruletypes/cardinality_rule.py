@@ -11,9 +11,13 @@ class CardinalityRule(RuleType):
 
     required_options = frozenset(["timeframe", "cardinality_field"])
 
+    def init_query_factory(self):
+        return QueryFactory(
+            ElasticsearchQuery, self.rule_config, self.add_data
+        )
+
     def __init__(self, *args):
         super(CardinalityRule, self).__init__(*args)
-        self.query_factory = QueryFactory(ElasticsearchQuery, args[0], self.add_data)
         if "max_cardinality" not in self.rules and "min_cardinality" not in self.rules:
             raise EAException(
                 "CardinalityRule must have one of either max_cardinality or min_cardinality"

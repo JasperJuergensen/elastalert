@@ -40,7 +40,7 @@ def test_basic_match_string(ea):
         "top_events_username": {"bob": 10, "mallory": 5},
     }
     alert_text = str(BasicMatchString(ea.rules["testrule"], match))
-    assert "anytest" in alert_text
+    assert "testrule" in alert_text
     assert "some stuff happened" in alert_text
     assert "username" in alert_text
     assert "bob: 10" in alert_text

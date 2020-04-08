@@ -24,14 +24,16 @@ log = logging.getLogger(__name__)
 class NewTermsRule(RuleType):
     """ Alerts on a new value in a list of fields. """
 
-    def __init__(self, rule, args=None):
-        super(NewTermsRule, self).__init__(rule, args)
+    def init_query_factory(self):
         query_class = ElasticsearchQuery
         callback = self.add_data
         if self.rule_config.get("use_terms_query"):
             query_class = ElasticsearchTermQuery
             callback = self.add_terms_data
-        self.query_factory = QueryFactory(query_class, self.rule_config, callback)
+        return QueryFactory(query_class, self.rule_config, callback)
+
+    def __init__(self, rule, args=None):
+        super(NewTermsRule, self).__init__(rule, args)
         self.seen_values = {}
         # Allow the use of query_key or fields
         if "fields" not in self.rules:

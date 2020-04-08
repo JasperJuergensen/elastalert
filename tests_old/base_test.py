@@ -6,9 +6,12 @@ import threading
 import elasticsearch
 import mock
 import pytest
+
 from elastalert.enhancements.drop_match_exception import DropMatchException
 from elastalert.enhancements.test_enhancement import TestEnhancement
 from elastalert.kibana import dashboard_temp
+from elastalert.queries.elasticsearch_query import ElasticsearchQuery
+from elastalert.ruletypes import AnyRule
 from elastalert.utils.time import (
     dt_to_ts,
     dt_to_unix,
@@ -16,7 +19,7 @@ from elastalert.utils.time import (
     ts_to_dt,
     unix_to_dt,
 )
-from elastalert.utils.util import EAException, ts_now
+from elastalert.utils.util import EAException, ts_now, elasticsearch_client
 from elasticsearch.exceptions import ConnectionError, ElasticsearchException
 
 START_TIMESTAMP = "2014-09-26T12:34:45Z"
@@ -29,6 +32,15 @@ def _set_hits(ea_inst, hits):
     res = {"hits": {"total": len(hits), "hits": hits}}
     ea_inst.client_es.return_value = res
 
+
+def call_run_query(ea, rule, hits = [], start = START, end = END):
+    ea.es.search.return_value = {"hits": {"total": {"value": len(hits)}, "hits": hits}}
+    query = ElasticsearchQuery(rule,  rule['type'].add_data, {})
+    query.es = ea.es
+    query.build_query()
+    query.run_query(start, end)
+
+    return query
 
 def generate_hits(timestamps, **kwargs):
     hits = []
@@ -45,7 +57,7 @@ def generate_hits(timestamps, **kwargs):
         for field in ["_id", "_type", "_index"]:
             data["_source"][field] = data[field]
         hits.append(data)
-    return {"hits": {"total": len(hits), "hits": hits}}
+    return hits
 
 
 def assert_alerts(ea_inst, calls):
@@ -110,185 +122,148 @@ def test_init_rule(ea):
 
 
 def test_query(ea):
-    ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules[0], START, END)
-    ea.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "filtered": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": END_TIMESTAMP,
-                                            "gt": START_TIMESTAMP,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-        },
+    rule = ea.rules["testrule"].copy()
+    call_run_query(ea, rule)
+    ea.es.search.assert_called_with(
         index="idx",
-        _source_include=["@timestamp"],
+        body={
+          "query": {
+            "bool": {
+              "filter": [],
+              "must": {
+                "range": {
+                  "@timestamp": {
+                    "gt": START_TIMESTAMP,
+                    "lte": END_TIMESTAMP
+                  }
+                }
+              }
+            }
+          },
+          "sort": [
+            "@timestamp"
+          ]
+        },
         ignore_unavailable=True,
-        size=ea.rules[0]["max_query_size"],
+        size=ea.rules["testrule"]["max_query_size"],
         scroll=ea.conf["scroll_keepalive"],
+        _source_includes=["@timestamp"]
     )
 
 
 def test_query_with_fields(ea):
-    ea.rules["testrule"]["_source_enabled"] = False
-    ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules["testrule"], START, END)
-    ea.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "filtered": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": END_TIMESTAMP,
-                                            "gt": START_TIMESTAMP,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-            "fields": ["@timestamp"],
-        },
+    rule = ea.rules["testrule"].copy()
+    rule["_source_enabled"] = False
+    call_run_query(ea, rule)
+    ea.es.search.assert_called_with(
         index="idx",
+        body={
+          "query": {
+            "bool": {
+              "filter": [],
+              "must": {
+                "range": {
+                  "@timestamp": {
+                    "gt": START_TIMESTAMP,
+                    "lte": END_TIMESTAMP
+                  }
+                }
+              }
+            }
+          },
+          "sort": [
+            "@timestamp"
+          ],
+            'stored_fields': ['@timestamp']
+        },
+        ignore_unavailable=True,
+        size=ea.rules["testrule"]["max_query_size"],
+        scroll=ea.conf["scroll_keepalive"]
+    )
+
+
+def query_with_time(ea, time_func):
+    rule = ea.rules["testrule"].copy()
+    rule["timestamp_type"] = "unix"
+    rule["dt_to_ts"] = time_func
+    call_run_query(ea, rule)
+    start_unix = time_func(START)
+    end_unix = time_func(END)
+    ea.es.search.assert_called_with(
+        index="idx",
+        body={
+          "query": {
+            "bool": {
+              "filter": [],
+              "must": {
+                "range": {
+                  "@timestamp": {
+                    "gt": start_unix,
+                    "lte": end_unix
+                  }
+                }
+              }
+            }
+          },
+          "sort": [
+            "@timestamp"
+          ]
+        },
         ignore_unavailable=True,
         size=ea.rules["testrule"]["max_query_size"],
         scroll=ea.conf["scroll_keepalive"],
+        _source_includes=["@timestamp"]
     )
 
 
 def test_query_with_unix(ea):
-    ea.rules["testrule"]["timestamp_type"] = "unix"
-    ea.rules["testrule"]["dt_to_ts"] = dt_to_unix
-    ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules["testrule"], START, END)
-    start_unix = dt_to_unix(START)
-    end_unix = dt_to_unix(END)
-    ea.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "filtered": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": end_unix,
-                                            "gt": start_unix,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-        },
-        index="idx",
-        _source_include=["@timestamp"],
-        ignore_unavailable=True,
-        size=ea.rules["testrule"]["max_query_size"],
-        scroll=ea.conf["scroll_keepalive"],
-    )
+    query_with_time(ea, dt_to_unix)
 
 
 def test_query_with_unixms(ea):
-    ea.rules["testrule"]["timestamp_type"] = "unixms"
-    ea.rules["testrule"]["dt_to_ts"] = dt_to_unixms
-    ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules["testrule"], START, END)
-    start_unix = dt_to_unixms(START)
-    end_unix = dt_to_unixms(END)
-    ea.thread_data.current_es.search.assert_called_with(
-        body={
-            "query": {
-                "filtered": {
-                    "filter": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "range": {
-                                        "@timestamp": {
-                                            "lte": end_unix,
-                                            "gt": start_unix,
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "sort": [{"@timestamp": {"order": "asc"}}],
-        },
-        index="idx",
-        _source_include=["@timestamp"],
-        ignore_unavailable=True,
-        size=ea.rules["testrule"]["max_query_size"],
-        scroll=ea.conf["scroll_keepalive"],
-    )
+    query_with_time(ea, dt_to_unixms)
 
 
 def test_no_hits(ea):
-    ea.thread_data.current_es.search.return_value = {"hits": {"total": 0, "hits": []}}
-    ea.run_query(ea.rules["testrule"], START, END)
-    assert ea.rules["testrule"]["type"].add_data.call_count == 0
+    rule = ea.rules["testrule"].copy()
+    call_run_query(ea, rule)
+    assert rule["type"].add_data.call_count == 0
 
 
 def test_no_terms_hits(ea):
-    ea.rules["testrule"]["use_terms_query"] = True
-    ea.rules["testrule"]["query_key"] = "QWERTY"
-    ea.rules["testrule"]["doc_type"] = "uiop"
-    ea.thread_data.current_es.deprecated_search.return_value = {
-        "hits": {"total": 0, "hits": []}
-    }
-    ea.run_query(ea.rules["testrule"], START, END)
-    assert ea.rules["testrule"]["type"].add_terms_data.call_count == 0
+    rule = ea.rules["testrule"].copy()
+    rule["use_terms_query"] = True
+    rule["query_key"] = "QWERTY"
+    rule["doc_type"] = "uiop"
+    call_run_query(ea, rule)
+    assert rule["type"].add_terms_data.call_count == 0
 
 
 def test_some_hits(ea):
+    rule = ea.rules["testrule"].copy()
+
     hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
-    hits_dt = generate_hits([START, END])
-    ea.thread_data.current_es.search.return_value = hits
-    ea.run_query(ea.rules["testrule"], START, END)
-    assert ea.rules["testrule"]["type"].add_data.call_count == 1
-    ea.rules["testrule"]["type"].add_data.assert_called_with(
-        [x["_source"] for x in hits_dt["hits"]["hits"]]
+    call_run_query(ea, rule, hits)
+
+
+    assert rule["type"].add_data.call_count == 1
+    rule["type"].add_data.assert_called_with(
+        [x["_source"] for x in hits]
     )
 
 
 def test_some_hits_unix(ea):
-    ea.rules["testrule"]["timestamp_type"] = "unix"
-    ea.rules["testrule"]["dt_to_ts"] = dt_to_unix
-    ea.rules["testrule"]["ts_to_dt"] = unix_to_dt
+    rule = ea.rules["testrule"].copy()
+    rule["dt_to_ts"] = dt_to_unix
+    rule["ts_to_dt"] = unix_to_dt
+
     hits = generate_hits([dt_to_unix(START), dt_to_unix(END)])
-    hits_dt = generate_hits([START, END])
-    ea.thread_data.current_es.search.return_value = copy.deepcopy(hits)
-    ea.run_query(ea.rules["testrule"], START, END)
-    assert ea.rules["testrule"]["type"].add_data.call_count == 1
-    ea.rules["testrule"]["type"].add_data.assert_called_with(
-        [x["_source"] for x in hits_dt["hits"]["hits"]]
+    call_run_query(ea, rule, hits)
+
+
+    assert rule["type"].add_data.call_count == 1
+    rule["type"].add_data.assert_called_with(
+        [x["_source"] for x in hits]
     )
 
 
@@ -300,31 +275,43 @@ def _duplicate_hits_generator(timestamps, **kwargs):
 
 
 def test_duplicate_timestamps(ea):
-    ea.thread_data.current_es.search.side_effect = _duplicate_hits_generator(
-        [START_TIMESTAMP] * 3, blah="duplicate"
-    )
-    ea.run_query(ea.rules["testrule"], START, ts_to_dt("2014-01-01T00:00:00Z"))
+    rule = ea.rules["testrule"].copy()
 
-    assert len(ea.rules["testrule"]["type"].add_data.call_args_list[0][0][0]) == 3
-    assert ea.rules["testrule"]["type"].add_data.call_count == 1
+    hits = _duplicate_hits_generator([START_TIMESTAMP] * 3, blah='duplicate')
+    query = call_run_query(ea, rule, next(hits), START, ts_to_dt('2014-01-01T00:00:00Z'))
 
-    # Run the query again, duplicates will be removed and not added
-    ea.run_query(ea.rules["testrule"], ts_to_dt("2014-01-01T00:00:00Z"), END)
-    assert ea.rules["testrule"]["type"].add_data.call_count == 1
+    assert len(rule["type"].add_data.call_args_list[0][0][0]) == 3
+    assert rule["type"].add_data.call_count == 1
+
+    query.run_query(ts_to_dt('2014-01-01T00:00:00Z'), END)
+    assert rule["type"].add_data.call_count == 1
 
 
-def test_match(ea):
-    hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
-    ea.thread_data.current_es.search.return_value = hits
-    ea.rules["testrule"]["type"].matches = [{"@timestamp": END}]
-    with mock.patch("elastalert.elastalert.elasticsearch_client"):
-        ea.run_rule(ea.rules["testrule"], END, START)
-
-    ea.rules["testrule"]["alert"][0].alert.called_with({"@timestamp": END_TIMESTAMP})
-    assert ea.rules["testrule"]["alert"][0].alert.call_count == 1
+def test_match(ea, monkeypatch):
+    rule = ea.rules["testrule"].copy()
+    # with mock.patch("elastalert.rule.elasticsearch_client"):
+    #     with mock.patch("elastalert.queries.elasticsearch_query.elasticsearch_client") as q_el_client:
+    #         q_el_client.search.return_value
+    #         rule["type"] = AnyRule(rule)
+    #         rule["type"].matches = [{'@timestamp': END}]
+    #         hits = generate_hits([START_TIMESTAMP, END_TIMESTAMP])
+    #         with mock.patch("elasticsearch.Elasticsearch.search") as mocked_search:
+    #             mocked_search.return_value = hits
+    #             rule["type"].run_rule(END, START)
+    #         rule['alert'][0].alert.called_with({'@timestamp': END_TIMESTAMP})
 
 
 def test_run_rule_calls_garbage_collect(ea):
+    rule = {
+        "name": "Test Rule",
+        "type": "any",
+        "stride_access_token": "token",
+        "stride_cloud_id": "cloud_id",
+        "stride_conversation_id": "conversation_id",
+        "alert_subject": "Cool subject",
+        "alert": [],
+    }
+
     start_time = "2014-09-26T00:00:00Z"
     end_time = "2014-09-26T12:00:00Z"
     ea.buffer_time = datetime.timedelta(hours=1)

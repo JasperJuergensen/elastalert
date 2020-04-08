@@ -4,7 +4,7 @@ services:
         build:
             context: ./
             dockerfile: Dockerfile-test
-        command: tox -- --ignore=tests_old
+        command: tox
         container_name: elastalert_tox
         working_dir: /home/elastalert
         volumes:

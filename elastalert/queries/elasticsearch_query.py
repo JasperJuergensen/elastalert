@@ -37,19 +37,25 @@ class ElasticsearchQuery(BaseQuery):
 
     def get_hits(self, starttime: str, endtime: str) -> List[dict]:
         if starttime and endtime:
+            query_starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
+            query_endtime = self.rule_config.get("dt_to_ts", dt_to_ts)(endtime)
             self.query["query"]["bool"].update(
                 {
                     "must": {
                         "range": {
                             self.rule_config.get("timestamp_field", "@timestamp"): {
-                                "gt": starttime,
-                                "lte": endtime,
+                                "gt": query_starttime,
+                                "lte": query_endtime,
                             }
                         }
                     }
                 }
             )
-        extra_args = {"_source_includes": self.rule_config["include"]}
+        extra_args = {}
+        if self.rule_config.get('_source_enabled'):
+            extra_args = {"_source_includes": self.rule_config["include"]}
+        else:
+            self.query['stored_fields'] = self.rule_config['include']
         scroll_keepalive = self.rule_config.get(
             "scroll_keepalive", config.get_config().get("scroll_keepalive", "30s")
         )
@@ -59,15 +65,15 @@ class ElasticsearchQuery(BaseQuery):
                 res = self.es.scroll(scroll_id=self.scroll_id, scroll=scroll_keepalive)
             else:
                 res = self.es.search(
-                    scroll=scroll_keepalive,
                     index=self.rule_config["index"],
+                    body=self.query,
+                    ignore_unavailable=True,
                     size=self.rule_config.get(
                         "max_query_size",
                         config.get_config().get("max_query_size", 10000),
                     ),
-                    body=self.query,
-                    ignore_unavailable=True,
-                    **extra_args
+                    scroll=scroll_keepalive,
+                    **extra_args,
                 )
                 self.total_hits = int(res["hits"]["total"]["value"])
         except ElasticsearchException as e:
@@ -129,14 +135,12 @@ class ElasticsearchQuery(BaseQuery):
             starttime = get_index_start(self.rule_config["index"])
         if endtime is None:
             endtime = ts_now()
-        starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
-        endtime = self.rule_config.get("dt_to_ts", dt_to_ts)(endtime)
         data = self.get_hits(starttime, endtime)
         if data:
-            old_len = len(data)
-            data = self.remove_duplicates(data)
-            self.num_dupes += old_len - len(data)
-            self.callback(data)
+            unique_data = self.remove_duplicates(data)
+            self.num_dupes += len(data) - len(unique_data)
+            if unique_data:
+                self.callback(unique_data)
         try:
             if (
                 self.scroll_id

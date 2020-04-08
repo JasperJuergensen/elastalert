@@ -204,7 +204,7 @@ def replace_dots_in_field_names(document):
     return document
 
 
-def elasticsearch_client(conf):
+def elasticsearch_client(conf) -> ElasticSearchClient:
     """ returns an :class:`ElasticSearchClient` instance configured using an es_conn_config """
     es_conn_conf = build_es_conn_config(conf)
     auth = Auth()
@@ -506,7 +506,9 @@ def get_index_start(index: str, timestamp_field: str = "@timestamp") -> str:
     """
     query = {"sort": {timestamp_field: {"order": "asc"}}}
     try:
-        res = {}  # TODO es search on index with size=1
+        es = elasticsearch_client(config.get_config())
+        res = es.search(index=index, size=1, body=query,
+                                                 _source_includes=[timestamp_field], ignore_unavailable=True)
     except ElasticsearchException as e:
         raise EARuntimeException(
             "Elasticsearch query error: %s" % (e), query=query, original_exception=e

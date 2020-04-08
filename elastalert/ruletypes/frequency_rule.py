@@ -16,8 +16,7 @@ class FrequencyRule(RuleType):
 
     required_options = frozenset(["num_events", "timeframe"])
 
-    def __init__(self, *args):
-        super(FrequencyRule, self).__init__(*args)
+    def init_query_factory(self):
         query_class = ElasticsearchQuery
         callback = self.add_data
         if self.rule_config.get("use_count_query"):
@@ -26,7 +25,10 @@ class FrequencyRule(RuleType):
         elif self.rule_config.get("use_terms_query"):
             query_class = ElasticsearchTermQuery
             callback = self.add_terms_data
-        self.query_factory = QueryFactory(query_class, self.rule_config, callback)
+        return QueryFactory(query_class, self.rule_config, callback)
+
+    def __init__(self, *args):
+        super(FrequencyRule, self).__init__(*args)
         self.ts_field = self.rules.get("timestamp_field", "@timestamp")
         self.get_ts = new_get_event_ts(self.ts_field)
         self.attach_related = self.rules.get("attach_related", False)

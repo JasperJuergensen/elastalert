@@ -7,6 +7,8 @@ import elastalert.utils.util
 import mock
 import pytest
 from elastalert.loaders import RulesLoader
+from elastalert.queries.elasticsearch_query import ElasticsearchQuery
+from elastalert.rule import Rule
 from elastalert.utils.time import dt_to_ts, ts_to_dt
 
 writeback_index = "wb"
@@ -192,8 +194,8 @@ def ea():
         "disable_rules_on_error": False,
         "scroll_keepalive": "30s",
     }
-    elastalert.utils.util.elasticsearch_client = mock_es_client
     elastalert.elastalert.elasticsearch_client = mock_es_client
+    ElasticsearchQuery.es = mock_es_client
 
     class mock_rule_loader(object):
         required_globals = frozenset([])
@@ -220,6 +222,7 @@ def ea():
     ea.writeback_es.search.return_value = {"hits": {"hits": []}, "total": 0}
     ea.writeback_es.deprecated_search.return_value = {"hits": {"hits": []}}
     ea.writeback_es.index.return_value = {"_id": "ABCD", "created": True}
+    Rule.writeback_es = ea.writeback_es
     ea.current_es = mock_es_client("", "")
     ea.thread_data.current_es = ea.current_es
     ea.thread_data.num_hits = 0
