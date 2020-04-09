@@ -1,13 +1,13 @@
 import copy
 import datetime
+import hashlib
 import logging
 import os
 
-import mock
-import pytest
-
 import elastalert.alerter
 import elastalert.ruletypes
+import mock
+import pytest
 from elastalert import config
 from elastalert.loaders import FileRulesLoader, loader_mapping
 from elastalert.utils.util import EAException
@@ -49,7 +49,117 @@ test_args.debug = False
 test_args.es_debug_trace = None
 
 
-#TODO evaluate if should be removed
+def test_file_rules_loader_get_rule_configs():
+    rules_loader = FileRulesLoader(test_config)
+    with mock.patch.object(
+        rules_loader,
+        "get_names",
+        mock.MagicMock(return_value=["test1.yaml", "test2.yaml"]),
+    ):
+        with mock.patch.object(
+            rules_loader, "load_rule", mock.MagicMock(return_value={"test": "test"}),
+        ):
+            assert {
+                "test1.yaml": {"test": "test"},
+                "test2.yaml": {"test": "test"},
+            } == rules_loader.get_rule_configs(test_config)
+
+
+def test_file_rules_loader_get_names():
+    rules_loader = FileRulesLoader(test_config)
+    test_config["rules_folder"] = "test"
+    with mock.patch(
+        "elastalert.loaders.file_rules_loader.os.listdir",
+        mock.MagicMock(return_value=["test1.yaml", "test2.yml"]),
+    ):
+        with mock.patch(
+            "elastalert.loaders.file_rules_loader.os.path.isfile",
+            mock.MagicMock(return_value=True),
+        ):
+            assert ["test/test1.yaml", "test/test2.yml"] == rules_loader.get_names(
+                test_config
+            )
+    test_config["scan_subdirectories"] = True
+    with mock.patch(
+        "elastalert.loaders.file_rules_loader.os.walk",
+        mock.MagicMock(
+            return_value=[
+                ("folder1/folder2", "", ["test1.yml"]),
+                ("folder1", "", ["test2.yaml", "test3.yaml"]),
+            ]
+        ),
+    ):
+        assert [
+            "folder1/folder2/test1.yml",
+            "folder1/test2.yaml",
+            "folder1/test3.yaml",
+        ] == rules_loader.get_names(test_config)
+
+
+def test_file_rules_loader_get_hashes():
+    rules_loader = FileRulesLoader(test_config)
+    with mock.patch.object(
+        rules_loader, "get_names", mock.MagicMock(return_value=["test1", "test2"]),
+    ):
+        with mock.patch.object(
+            rules_loader, "get_rule_file_hash", mock.MagicMock(return_value="test"),
+        ):
+            assert {"test1": "test", "test2": "test"} == rules_loader.get_hashes(
+                test_config
+            )
+
+
+@mock.patch("builtins.open", mock.mock_open(read_data=b"test:\n    hello: world"))
+def test_file_rules_loader_get_rule_config():
+    rules_loader = FileRulesLoader(test_config)
+    assert {"test": {"hello": "world"}} == rules_loader.get_rule_config("test")
+
+
+def test_file_rules_loader_get_rule_config_invalid_yaml_file():
+    rules_loader = FileRulesLoader(test_config)
+    with mock.patch("builtins.open", mock.mock_open(read_data=b"test:\nhello world")):
+        with pytest.raises(EAException):
+            rules_loader.get_rule_config("test")
+
+
+def test_file_rules_loader_get_import_rule():
+    rules_loader = FileRulesLoader(test_config)
+    assert "/import_file" == rules_loader.get_import_rule({"import": "/import_file"})
+    assert "/folder/import_file" == rules_loader.get_import_rule(
+        {"import": "import_file", "rule_file": "/folder/rule_file"}
+    )
+
+
+@mock.patch("elastalert.loaders.file_rules_loader.os.path.exists")
+def test_file_rules_loader_get_rule_file_hash(mock_path_exists):
+    rules_loader = FileRulesLoader(test_config)
+    with mock.patch("builtins.open", mock.mock_open(read_data=b"test")):
+        mock_path_exists.return_value = True
+        assert hashlib.sha1(b"test").digest() == rules_loader.get_rule_file_hash("test")
+        mock_path_exists.return_value = False
+        assert "" == rules_loader.get_rule_file_hash("test")
+
+
+@mock.patch(
+    "elastalert.loaders.file_rules_loader.os.path.exists",
+    mock.MagicMock(return_value=True),
+)
+def test_file_rules_loader_get_rule_file_hash_with_import():
+    rules_loader = FileRulesLoader(test_config)
+    rules_loader.import_rules = {"test": ["import_test"]}
+    with mock.patch("builtins.open", mock.mock_open(read_data=b"test")):
+        assert hashlib.sha1(
+            hashlib.sha1(b"test").digest() + hashlib.sha1(b"test").digest()
+        ).digest() == rules_loader.get_rule_file_hash("test")
+
+
+def test_file_rules_loader_is_yaml():
+    assert FileRulesLoader.is_yaml("test.yaml")
+    assert FileRulesLoader.is_yaml("test.yml")
+    assert not FileRulesLoader.is_yaml("test.xml")
+
+
+# TODO evaluate if should be removed
 @pytest.mark.skip
 def test_import_rules():
     rules_loader = FileRulesLoader(test_config)
@@ -89,13 +199,13 @@ def setup_test_config():
 
 def get_test_rule(config_obj):
 
-    rules_loader_class = loader_mapping.get(config_obj['rules_loader'])
+    rules_loader_class = loader_mapping.get(config_obj["rules_loader"])
     rules_loader = rules_loader_class(config_obj)
     config_obj["rules"] = rules_loader.load(config_obj)
     rules = config_obj["rules"]
     if len(rules) == 0:
         return None
-    return config_obj["rules"]['testrule']
+    return config_obj["rules"]["testrule"]
 
 
 def configure_load_rule_and_validate(test_config, test_rule, validation):
@@ -238,37 +348,14 @@ def test_file_rules_loader_get_names_recursive():
     assert len(paths) == 4
 
 
-def test_file_rules_loader_get_names():
-    # Check for no subdirectory
-    conf = {"scan_subdirectories": False, "rules_folder": "root"}
-    rules_loader = FileRulesLoader(conf)
-    files = ["badfile", "a.yaml", "b.yaml"]
-
-    with mock.patch("os.listdir") as mock_list:
-        with mock.patch("os.path.isfile") as mock_path:
-            mock_path.return_value = True
-            mock_list.return_value = files
-            paths = rules_loader.get_names(conf)
-
-    paths = [p.replace(os.path.sep, "/") for p in paths]
-
-    assert "root/a.yaml" in paths
-    assert "root/b.yaml" in paths
-    assert len(paths) == 2
-
-
 def test_load_rules():
 
     test_rule_copy = copy.deepcopy(test_rule)
     test_config_copy = copy.deepcopy(test_config)
 
     def validation(rule_obj):
-        assert isinstance(
-            rule_obj["type"], elastalert.ruletypes.RuleType
-        )
-        assert isinstance(
-            rule_obj["alert"][0], elastalert.alerter.Alerter
-        )
+        assert isinstance(rule_obj["type"], elastalert.ruletypes.RuleType)
+        assert isinstance(rule_obj["alert"][0], elastalert.alerter.Alerter)
         assert isinstance(rule_obj["timeframe"], datetime.timedelta)
         assert isinstance(rule_obj["run_every"], datetime.timedelta)
         for included_key in ["comparekey", "testkey", "@timestamp"]:
@@ -459,12 +546,15 @@ def test_raises_on_bad_generate_kibana_filters():
 
         rules_loader = FileRulesLoader(test_config_copy)
 
-
-        rules_loader.parse_rule_config('testrule', get_new_rule_copy(good), test_config_copy)
+        rules_loader.parse_rule_config(
+            "testrule", get_new_rule_copy(good), test_config_copy
+        )
 
         for bad in bad_filters:
             with pytest.raises(EAException):
-                rules_loader.parse_rule_config('testrule', get_new_rule_copy(good + bad), test_config_copy)
+                rules_loader.parse_rule_config(
+                    "testrule", get_new_rule_copy(good + bad), test_config_copy
+                )
 
 
 def test_kibana_discover_from_timedelta():
