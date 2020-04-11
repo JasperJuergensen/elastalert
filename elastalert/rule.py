@@ -36,17 +36,28 @@ class Rule:
     def init_query_factory(self):
         pass
 
-
-    def __init__(self, rule_config: dict):
+    def __init__(self, rule_config: dict, args = None,  es=None):
         """"""
         self.rule_config = rule_config
         self.silence_cache = {}
-        self.writeback_es = elasticsearch_client(config.get_config())
+        self.matches = []
+        self.es = es
         self.alerts_sent = 0
         self.query_factory = self.init_query_factory()
+        self.cumulative_hits = 0
+        if not es:
+            self.es = elasticsearch_client(config.get_config())
+
+    def process_failed_alerts(self):
+        # If there are pending aggregate matches, try processing them
+        while self.rule_config['agg_matches']:
+            match = self.rule_config['agg_matches'].pop()
+            self.add_aggregated_alert(match, self.rule_config)
 
     def run_rule(self, endtime=None, starttime=None):
         """"""
+
+        self.process_failed_alerts()
         run_start = time.time()
         if starttime:
             self.rule_config["starttime"] = starttime
@@ -67,14 +78,11 @@ class Rule:
         query = self.query_factory.get_query_instance()
 
         tmp_endtime = self.rule_config["starttime"]
-        while endtime - self.rule_config["starttime"] > segment_size:
+        while endtime - tmp_endtime > segment_size:
             tmp_endtime += segment_size
-            self.cumulative_hits += query.run(
-                self.rule_config["starttime"], tmp_endtime
-            )
-            self.rule_config["starttime"] = tmp_endtime
-            self.rule_config["type"].garbage_collect(tmp_endtime)
-
+            self.cumulative_hits += query.run(self.rule_config['starttime'], tmp_endtime)
+            self.rule_config['starttime'] = tmp_endtime
+            self.garbage_collect(tmp_endtime)
         if self.rule_config.get("aggregation_query_element"):
             if endtime - tmp_endtime == segment_size:
                 self.cumulative_hits += query.run(
@@ -89,10 +97,10 @@ class Rule:
                 endtime = tmp_endtime
         else:
             # TODO evaluate if can be removed, if it is not an infinite loop is encountered
-            #self.cumulative_hits += query.run(self.rule_config["starttime"], endtime)
-            self.rule_config["type"].garbage_collect(endtime)
+            # self.cumulative_hits += query.run(self.rule_config["starttime"], endtime)
+            self.garbage_collect(endtime)
 
-        num_matches = len(self.rule_config["type"].matches)
+        num_matches = len(self.matches)
         if not self.is_silenced(self.rule_config["name"] + "._silence"):
             self.process_matches()
 
@@ -115,9 +123,9 @@ class Rule:
     def process_matches(self):
 
         # Process any new matches
-        num_matches = len(self.rule_config["type"].matches)
-        while self.rule_config["type"].matches:
-            match = self.rule_config["type"].matches.pop(0)
+        num_matches = len(self.matches)
+        while self.matches:
+            match = self.matches.pop(0)
             match["num_hits"] = self.cumulative_hits
             match["num_matches"] = num_matches
 
@@ -153,9 +161,11 @@ class Rule:
             self.add_aggregated_alert(match, self.rule_config)
 
     def is_silenced(self, silence_cache_key: str) -> bool:
-        if silence_cache_key in self.silence_cache:
-            if ts_now() < self.silence_cache[silence_cache_key][0]:
-                return True
+        if (
+            silence_cache_key in self.silence_cache
+            and ts_now() < self.silence_cache[silence_cache_key][0]
+        ):
+            return True
         if config.get_config()["debug"]:
             return False
 
@@ -164,8 +174,8 @@ class Rule:
             "sort": {"until": {"order": "desc"}},
         }
         try:
-            res = self.writeback_es.search(
-                index=self.writeback_es.resolve_writeback_index(
+            res = self.es.search(
+                index=self.es.resolve_writeback_index(
                     config.get_config()["writeback_index"], "silence"
                 ),
                 body=query,
@@ -248,7 +258,7 @@ class Rule:
         # Enhancements were already run at match time if
         # run_enhancements_first is set or
         # retried==True, which means this is a retry of a failed alert
-        if not self.rule_config.get("run_enhancements_first") and not retried:
+        if not (self.rule_config.get("run_enhancements_first") or retried):
             for enhancement in self.rule_config["match_enhancements"]:
                 valid_matches = []
                 for match in matches:
@@ -399,16 +409,16 @@ class Rule:
             query["filter"]["bool"]["must"].append(
                 {"term": {"aggregation_key": aggregation_key_value}}
             )
-        if self.writeback_es.is_atleastfive():
+        if self.es.is_atleastfive():
             query = {"query": {"bool": query}}
         query["sort"] = {"alert_time": {"order": "desc"}}
         try:
-            if self.writeback_es.is_atleastsixtwo():
-                res = self.writeback_es.search(
+            if self.es.is_atleastsixtwo():
+                res = self.es.search(
                     index=config.get_config()["writeback_index"], body=query, size=1
                 )
             else:
-                res = self.writeback_es.deprecated_search(
+                res = self.es.deprecated_search(
                     index=config.get_config()["writeback_index"],
                     doc_type="elastalert",
                     body=query,
@@ -473,13 +483,19 @@ class Rule:
             writeback_body["@timestamp"] = dt_to_ts(ts_now())
 
         try:
-            index = self.writeback_es.resolve_writeback_index(
+            index = self.es.resolve_writeback_index(
                 config.get_config()["writeback_index"], doc_type
             )
-            if self.writeback_es.is_atleastsixtwo():
-                res = self.writeback_es.index(index=index, body=body)
-            else:
-                res = self.writeback_es.index(index=index, doc_type=doc_type, body=body)
+            res = self.es.index(index=index, body=body)
             return res
         except ElasticsearchException as e:
             log.exception("Error writing alert info to Elasticsearch: %s" % (e))
+
+    @abstractmethod
+    def garbage_collect(self, timestamp):
+        """ Gets called periodically to remove old data that is useless beyond given timestamp.
+        May also be used to compute things in the absence of new data.
+
+        :param timestamp: A timestamp indicating the rule has been run up to that point.
+        """
+        pass

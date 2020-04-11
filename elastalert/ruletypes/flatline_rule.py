@@ -10,8 +10,8 @@ class FlatlineRule(FrequencyRule):
 
     required_options = frozenset(["timeframe", "threshold"])
 
-    def __init__(self, *args):
-        super(FlatlineRule, self).__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super(FlatlineRule, self).__init__(*args, **kwargs)
         self.threshold = self.rules["threshold"]
 
         # Dictionary mapping query keys to the first events

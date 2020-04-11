@@ -11,11 +11,11 @@ class BaseAggregationRule(RuleType, metaclass=ABCMeta):
 
     def init_query_factory(self):
         return QueryFactory(
-            ElasticsearchAggregationQuery, self.rule_config, self.add_aggregation_data
+            ElasticsearchAggregationQuery, self.rule_config, self.add_aggregation_data, self.es
         )
 
-    def __init__(self, *args):
-        super(BaseAggregationRule, self).__init__(*args)
+    def __init__(self, *args,  **kwargs):
+        super(BaseAggregationRule, self).__init__(*args, **kwargs)
         bucket_interval = self.rules.get("bucket_interval")
         if bucket_interval:
             if "seconds" in bucket_interval:

@@ -25,10 +25,10 @@ class FrequencyRule(RuleType):
         elif self.rule_config.get("use_terms_query"):
             query_class = ElasticsearchTermQuery
             callback = self.add_terms_data
-        return QueryFactory(query_class, self.rule_config, callback)
+        return QueryFactory(query_class, self.rule_config, callback, self.es)
 
-    def __init__(self, *args):
-        super(FrequencyRule, self).__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super(FrequencyRule, self).__init__(*args,  **kwargs)
         self.ts_field = self.rules.get("timestamp_field", "@timestamp")
         self.get_ts = new_get_event_ts(self.ts_field)
         self.attach_related = self.rules.get("attach_related", False)

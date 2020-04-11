@@ -3,6 +3,7 @@ import logging
 from typing import List, Union
 
 from elastalert import config
+from elastalert.clients import ElasticSearchClient
 from elastalert.exceptions import EARuntimeException
 from elastalert.queries import BaseQuery
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_now
@@ -21,14 +22,16 @@ log = logging.getLogger(__name__)
 class ElasticsearchQuery(BaseQuery):
     """"""
 
-    def __init__(self, rule_config: dict, callback: callable, persistent: dict):
+    def __init__(self, rule_config: dict, callback: callable, persistent: dict, es: ElasticSearchClient=None):
         super().__init__(rule_config, callback, persistent)
         self.scroll_id = None
         self.total_hits = 0
         self.num_hits = 0
         self.num_dupes = 0
         self.persistent.setdefault("processed_hits", {})
-        self.es = elasticsearch_client(config.get_config())
+        if not es:
+            es = elasticsearch_client(config.get_config())
+        self.es = es
 
     def build_query(self, sort: bool = True):
         self.query = {"query": {"bool": {"filter": self.rule_config.get("filter", [])}}}

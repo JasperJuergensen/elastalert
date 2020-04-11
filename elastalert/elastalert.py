@@ -76,7 +76,7 @@ class ElastAlerter(object):
                 )
             )
         self.rules_loader = rules_loader
-        self.rules = self.rules_loader.load(self.conf)
+        self.rules = self.rules_loader.load(self.conf, self.conf["args"])
 
         log.info("%s rules loaded", len(self.rules))
 
@@ -108,7 +108,6 @@ class ElastAlerter(object):
         self.show_disabled_rules = self.conf.get("show_disabled_rules", True)
 
         self.writeback_es = elasticsearch_client(self.conf)
-        self.es = elasticsearch_client(self.conf)
 
         for rule in self.rules.values():
             self.init_rule(rule)
@@ -503,17 +502,9 @@ class ElastAlerter(object):
             query = {"query": inner_query, "filter": time_filter}
         query.update(sort)
         try:
-            if self.writeback_es.is_atleastsixtwo():
-                res = self.writeback_es.search(
-                    index=self.writeback_index, body=query, size=1000
-                )
-            else:
-                res = self.writeback_es.deprecated_search(
-                    index=self.writeback_index,
-                    doc_type="elastalert",
-                    body=query,
-                    size=1000,
-                )
+            res = self.writeback_es.search(
+                index=self.writeback_index, body=query, size=1000
+            )
             if res["hits"]["hits"]:
                 return res["hits"]["hits"]
         except ElasticsearchException as e:
@@ -569,12 +560,7 @@ class ElastAlerter(object):
 
                 # Delete it from the index
                 try:
-                    if self.writeback_es.is_atleastsixtwo():
-                        self.writeback_es.delete(index=self.writeback_index, id=_id)
-                    else:
-                        self.writeback_es.delete(
-                            index=self.writeback_index, doc_type="elastalert", id=_id
-                        )
+                    self.writeback_es.delete(index=self.writeback_index, id=_id)
                 except ElasticsearchException:  # TODO: Give this a more relevant exception, try:except: is evil.
                     self.handle_error(
                         "Failed to delete alert %s at %s" % (_id, alert_time)
@@ -694,8 +680,10 @@ class ElastAlerter(object):
             exit(1)
 
         # With --rule, self.rules will only contain that specific rule
+
+        first_rule = next(iter(self.rules.values()))
         if not silence_cache_key:
-            silence_cache_key = self.rules.values()[0]["name"] + "._silence"
+            silence_cache_key = first_rule["name"] + "._silence"
 
         try:
             silence_ts = parse_deadline(self.conf["args"].silence)
@@ -703,7 +691,7 @@ class ElastAlerter(object):
             log.error("%s is not a valid time period" % (self.conf["args"].silence))
             exit(1)
 
-        if not self.rules.values()[0]["type"].set_realert(
+        if not first_rule["type"].set_realert(
             silence_cache_key, silence_ts, 0
         ):
             log.error("Failed to save silence command to Elasticsearch")

@@ -15,9 +15,9 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
         ["min", "max", "avg", "sum", "cardinality", "value_count"]
     )
 
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
         # We inherit everything from BaseAggregation and Spike, overwrite only what we need in functions below
-        super(SpikeMetricAggregationRule, self).__init__(*args)
+        super(SpikeMetricAggregationRule, self).__init__(*args, **kwargs)
 
         # MetricAgg alert things
         self.metric_key = (

@@ -95,7 +95,7 @@ class RulesLoader(metaclass=ABCMeta):
 
         self.base_config = copy.deepcopy(conf)
 
-    def load(self, conf: dict) -> Dict[str, dict]:
+    def load(self, conf: dict, args=None) -> Dict[str, dict]:
         # TODO rule_name as argument
         rule_configs = self.get_rule_configs(conf)
         loaded_rule_configs = dict()
@@ -110,7 +110,7 @@ class RulesLoader(metaclass=ABCMeta):
                 log.debug("Diabled rule %s", rule_name)
                 continue
             try:
-                self.load_modules(rule_config)
+                self.load_modules(rule_config, args)
             except EAException as e:
                 log.error("Unable to instantiate rule %s: %s", rule_name, e)
                 continue
@@ -442,7 +442,7 @@ class RulesLoader(metaclass=ABCMeta):
             )
         # Instantiate rule
         try:
-            rule_config["type"] = rule_config['type'](rule_config, args)
+            rule_config["type"] = rule_config["type"](rule_config, args)
         except (KeyError, EAException) as e:
             raise EAConfigException(
                 "Error initializing rule %s: %s" % (rule_config["name"], e)

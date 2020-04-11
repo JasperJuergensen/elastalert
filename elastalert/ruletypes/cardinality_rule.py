@@ -13,7 +13,7 @@ class CardinalityRule(RuleType):
 
     def init_query_factory(self):
         return QueryFactory(
-            ElasticsearchQuery, self.rule_config, self.add_data
+            ElasticsearchQuery, self.rule_config, self.add_data, self.es
         )
 
     def __init__(self, *args):

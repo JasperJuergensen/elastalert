@@ -10,11 +10,8 @@ class CompareRule(RuleType, metaclass=ABCMeta):
 
     def init_query_factory(self):
         return QueryFactory(
-            ElasticsearchQuery, self.rule_config, self.add_data
+            ElasticsearchQuery, self.rule_config, self.add_data, self.es
         )
-
-    def __init__(self, rule_config, args=None):
-        super().__init__(rule_config)
 
     required_options = frozenset(["compound_compare_key"])
 

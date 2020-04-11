@@ -7,8 +7,8 @@ class WhitelistRule(CompareRule):
 
     required_options = frozenset(["compare_key", "whitelist", "ignore_null"])
 
-    def __init__(self, rules, args=None):
-        super(WhitelistRule, self).__init__(rules)
+    def __init__(self, rules, *args, **kwargs):
+        super(WhitelistRule, self).__init__(rules, *args, **kwargs)
         self.expand_entries("whitelist")
 
     def compare(self, event):

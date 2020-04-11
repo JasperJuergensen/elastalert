@@ -8,11 +8,8 @@ class AnyRule(RuleType):
 
     def init_query_factory(self):
         return QueryFactory(
-            ElasticsearchQuery, self.rule_config, self.add_data
+            ElasticsearchQuery, self.rule_config, self.add_data, self.es
         )
-
-    def __init__(self, rule_config, args = None):
-        super().__init__(rule_config)
 
     def add_data(self, data):
         for datum in data:

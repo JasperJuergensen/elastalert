@@ -15,9 +15,8 @@ class RuleType(Rule, metaclass=ABCMeta):
 
     required_options = frozenset()
 
-    def __init__(self, rule_config, args=None):
-        super().__init__(rule_config)
-        self.matches = []
+    def __init__(self, rule_config, *args, **kwargs):
+        super().__init__(rule_config, *args, **kwargs)
         self.rules = self.rule_config
         self.occurrences = {}
         self.rules["category"] = self.rules.get("category", "")
@@ -56,14 +55,6 @@ class RuleType(Rule, metaclass=ABCMeta):
         :return: A user facing string describing the match.
         """
         return ""
-
-    def garbage_collect(self, timestamp):
-        """ Gets called periodically to remove old data that is useless beyond given timestamp.
-        May also be used to compute things in the absence of new data.
-
-        :param timestamp: A timestamp indicating the rule has been run up to that point.
-        """
-        pass
 
     @deprecated
     def add_count_data(self, counts):

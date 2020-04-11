@@ -29,10 +29,10 @@ class SpikeRule(RuleType):
         elif self.rule_config.get("use_terms_query"):
             query_class = ElasticsearchTermQuery
             callback = self.add_terms_data
-        return QueryFactory(query_class, self.rule_config, callback)
+        return QueryFactory(query_class, self.rule_config, callback, self.es)
 
-    def __init__(self, *args):
-        super(SpikeRule, self).__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super(SpikeRule, self).__init__(*args, **kwargs)
         self.timeframe = self.rules["timeframe"]
 
         self.ref_windows = {}

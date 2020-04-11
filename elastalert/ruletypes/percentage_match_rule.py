@@ -5,8 +5,8 @@ from elastalert.ruletypes.base_aggregation_rule import BaseAggregationRule
 class PercentageMatchRule(BaseAggregationRule):
     required_options = frozenset(["match_bucket_filter"])
 
-    def __init__(self, *args):
-        super(PercentageMatchRule, self).__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super(PercentageMatchRule, self).__init__(*args, **kwargs)
         self.ts_field = self.rules.get("timestamp_field", "@timestamp")
         if "max_percentage" not in self.rules and "min_percentage" not in self.rules:
             raise EAException(

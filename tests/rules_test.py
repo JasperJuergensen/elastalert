@@ -639,22 +639,17 @@ def test_new_term(ea):
             }
         }
     }
+    ea.rule_es.search.return_value = mock_res
+    ea.rule_es.info.return_value = {"version": {"number": "2.x.x"}}
+    call_args = []
 
-    with mock.patch(
-        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
-    ) as mock_es:
-        mock_es.return_value = mock.Mock()
-        mock_es.return_value.search.return_value = mock_res
-        mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
-        call_args = []
+    # search is called with a mutable dict containing timestamps, this is required to test
+    def record_args(*args, **kwargs):
+        call_args.append((copy.deepcopy(args), copy.deepcopy(kwargs)))
+        return mock_res
 
-        # search is called with a mutable dict containing timestamps, this is required to test
-        def record_args(*args, **kwargs):
-            call_args.append((copy.deepcopy(args), copy.deepcopy(kwargs)))
-            return mock_res
-
-        mock_es.return_value.search.side_effect = record_args
-        rule = NewTermsRule(rules)
+    ea.rule_es.search.side_effect = record_args
+    rule = NewTermsRule(rules, es=ea.rule_es)
 
     # 30 day default range, 1 day default step, times 2 fields
     assert rule.es.search.call_count == 60
@@ -698,13 +693,10 @@ def test_new_term(ea):
 
     # Missing_field
     rules["alert_on_missing_field"] = True
-    with mock.patch(
-        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
-    ) as mock_es:
-        mock_es.return_value = mock.Mock()
-        mock_es.return_value.search.return_value = mock_res
-        mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
-        rule = NewTermsRule(rules)
+    ea.rule_es.return_value = mock.Mock()
+    ea.rule_es.search.return_value = mock_res
+    ea.rule_es.info.return_value = {"version": {"number": "2.x.x"}}
+    rule = NewTermsRule(rules, es=ea.rule_es)
     rule.add_data([{"@timestamp": ts_now(), "a": "key2"}])
     assert len(rule.matches) == 1
     assert rule.matches[0]["missing_field"] == "b"
@@ -733,15 +725,10 @@ def test_new_term_nested_field(ea):
             }
         }
     }
-    with mock.patch(
-        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
-    ) as mock_es:
-        mock_es.return_value = mock.Mock()
-        mock_es.return_value.search.return_value = mock_res
-        mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
-        rule = NewTermsRule(rules)
-
-        assert rule.es.search.call_count == 60
+    ea.rule_es.search.return_value = mock_res
+    ea.rule_es.info.return_value = {"version": {"number": "2.x.x"}}
+    rule = NewTermsRule(rules, es =ea.rule_es)
+    assert rule.es.search.call_count == 60
 
     # Key3 causes an alert for nested field b.c
     rule.add_data([{"@timestamp": ts_now(), "b": {"c": "key3"}}])
@@ -775,17 +762,12 @@ def test_new_term_with_terms(ea):
             }
         }
     }
+    ea.rule_es.search.return_value = mock_res
+    ea.rule_es.info.return_value = {"version": {"number": "2.x.x"}}
+    rule = NewTermsRule(rules, es=ea.rule_es)
 
-    with mock.patch(
-        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
-    ) as mock_es:
-        mock_es.return_value = mock.Mock()
-        mock_es.return_value.search.return_value = mock_res
-        mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
-        rule = NewTermsRule(rules)
-
-        # Only 15 queries because of custom step size
-        assert rule.es.search.call_count == 15
+    # Only 15 queries because of custom step size
+    assert rule.es.search.call_count == 15
 
     # Key1 and key2 shouldn't cause a match
     terms = {
@@ -848,15 +830,11 @@ def test_new_term_with_composite_fields(ea):
         }
     }
 
-    with mock.patch(
-        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
-    ) as mock_es:
-        mock_es.return_value = mock.Mock()
-        mock_es.return_value.search.return_value = mock_res
-        mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
-        rule = NewTermsRule(rules)
+    ea.rule_es.search.return_value = mock_res
+    ea.rule_es.info.return_value = {"version": {"number": "2.x.x"}}
+    rule = NewTermsRule(rules, es=ea.rule_es)
 
-        assert rule.es.search.call_count == 60
+    assert rule.es.search.call_count == 60
 
     # key3 already exists, and thus shouldn't cause a match
     rule.add_data([{"@timestamp": ts_now(), "a": "key1", "b": "key2", "c": "key3"}])
@@ -897,13 +875,9 @@ def test_new_term_with_composite_fields(ea):
 
     # Missing_fields
     rules["alert_on_missing_field"] = True
-    with mock.patch(
-        "elastalert.ruletypes.new_terms_rule.elasticsearch_client"
-    ) as mock_es:
-        mock_es.return_value = mock.Mock()
-        mock_es.return_value.search.return_value = mock_res
-        mock_es.return_value.info.return_value = {"version": {"number": "2.x.x"}}
-        rule = NewTermsRule(rules)
+    ea.rule_es.search.return_value = mock_res
+    ea.rule_es.info.return_value = {"version": {"number": "2.x.x"}}
+    rule = NewTermsRule(rules, es=ea.rule_es)
     rule.add_data([{"@timestamp": ts_now(), "a": "key2"}])
     assert len(rule.matches) == 2
     # This means that any one of the three n composite fields were not present

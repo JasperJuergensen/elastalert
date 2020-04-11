@@ -58,9 +58,9 @@ class TestElasticsearch(object):
         ) + datetime.timedelta(days=1)
         ea.rules[0]["aggregate_by_match_time"] = True
         match = {"@timestamp": match_timestamp, "num_hits": 0, "num_matches": 3}
-        ea.writeback_es = es_client
+        ea.es = es_client
         res = ea.add_aggregated_alert(match, ea.rules[0])
-        if ea.writeback_es.is_atleastsix():
+        if ea.es.is_atleastsix():
             assert res["result"] == "created"
         else:
             assert res["created"] is True
@@ -74,9 +74,9 @@ class TestElasticsearch(object):
         until_timestamp = datetime.datetime.now(tz=dateutil.tz.tzutc()).replace(
             microsecond=0
         ) + datetime.timedelta(days=1)
-        ea.writeback_es = es_client
+        ea.es = es_client
         res = ea.set_realert(ea.rules[0]["name"], until_timestamp, 0)
-        if ea.writeback_es.is_atleastsix():
+        if ea.es.is_atleastsix():
             assert res["result"] == "created"
         else:
             assert res["created"] is True

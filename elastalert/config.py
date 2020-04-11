@@ -121,10 +121,9 @@ def configure_logging(args, conf):
         log.info("Note: --debug and --verbose flags are set. --debug takes precedent.")
 
     # re-enable INFO log level on elastalert_logger in verbose/debug mode
-    # (but don't touch it if it is already set to INFO or below by config)
-    if args.verbose or args.debug:
-        if log.level > logging.INFO or log.level == logging.NOTSET:
-            logging.getLogger("elastalert").setLevel(logging.INFO)
+        # (but don't touch it if it is already set to INFO or below by config)
+    if (args.verbose or args.debug) and (log.level > logging.INFO or log.level == logging.NOTSET):
+        logging.getLogger("elastalert").setLevel(logging.INFO)
 
     if args.debug:
         log.info(
@@ -153,11 +152,7 @@ def load_config(args) -> dict:
     # init logging from config and set log levels according to command line options
     configure_logging(args, conf)
 
-    if args.debug:
-        conf["debug"] = True
-    else:
-        conf["debug"] = False
-
+    conf["debug"] = True if args.debug else False
     for env_var, conf_var in env_settings.items():
         val = env(env_var, None)
         if val is not None:
