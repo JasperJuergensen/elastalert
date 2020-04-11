@@ -156,6 +156,7 @@ class RulesLoader(metaclass=ABCMeta):
 
     def load_rule(self, rule_name: str, imports: list = None) -> dict:
         rule_config = self.get_rule_config(rule_name)
+        self.remove_top_level_filter_query(rule_config)
         if "import" in rule_config:
             if imports is None:
                 imports = list()
@@ -504,3 +505,12 @@ class RulesLoader(metaclass=ABCMeta):
             ).with_traceback(sys.exc_info()[2])
 
         return alert_field
+
+    def remove_top_level_filter_query(self, rule_config):
+        new_filters = []
+        for es_filter in rule_config.get('filter', []):
+            if es_filter.get('query'):
+                new_filters.append(es_filter['query'])
+            else:
+                new_filters.append(es_filter)
+        rule_config['filter'] = new_filters
