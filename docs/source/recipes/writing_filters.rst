@@ -120,7 +120,7 @@ For Elasticsearch 5.x, this will not work and to implement boolean logic use que
      - query:
           query_string:
             query: "somefield: somevalue OR foo: bar"
-            
+
 
 Loading Filters Directly From Kibana 3
 --------------------------------------

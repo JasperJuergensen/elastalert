@@ -15,6 +15,7 @@ class BaseQuery(metaclass=ABCMeta):
         self.rule_config = rule_config
         self.callback = callback
         self.persistent = persistent
+        self.query = None
         self.build_query()
 
     def run(self, starttime=None, endtime=None) -> int:

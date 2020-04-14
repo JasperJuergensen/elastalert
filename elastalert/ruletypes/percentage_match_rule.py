@@ -19,17 +19,14 @@ class PercentageMatchRule(BaseAggregationRule):
 
     def get_match_str(self, match):
         percentage_format_string = self.rules.get("percentage_format_string", None)
-        return (
-                "Percentage violation, value: %s (min: %s max : %s) of %s items\n\n"
-                % (
-                    percentage_format_string % (match["percentage"])
-                    if percentage_format_string
-                    else match["percentage"],
-                    self.rules.get("min_percentage"),
-                    self.rules.get("max_percentage"),
-                    match["denominator"],
-                )
-            )
+        return "Percentage violation, value: %s (min: %s max : %s) of %s items\n\n" % (
+            percentage_format_string % (match["percentage"])
+            if percentage_format_string
+            else match["percentage"],
+            self.rules.get("min_percentage"),
+            self.rules.get("max_percentage"),
+            match["denominator"],
+        )
 
     def generate_aggregation_query(self):
         return {
@@ -78,6 +75,6 @@ class PercentageMatchRule(BaseAggregationRule):
         ):
             return True
         return (
-                "min_percentage" in self.rules
-                and match_percentage < self.rules["min_percentage"]
-            )
+            "min_percentage" in self.rules
+            and match_percentage < self.rules["min_percentage"]
+        )

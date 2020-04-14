@@ -2,10 +2,11 @@ import hashlib
 import os
 from typing import Dict, List
 
-import yaml
+import staticconf.loader
+from elastalert.config import Config
 from elastalert.exceptions import EAException
 from elastalert.loaders import RulesLoader
-from staticconf.loader import yaml_loader
+from yaml import scanner
 
 
 class FileRulesLoader(RulesLoader):
@@ -13,18 +14,17 @@ class FileRulesLoader(RulesLoader):
     # Required global (config.yaml) configuration options for the loader
     required_globals = frozenset(["rules_folder"])
 
-    def get_rule_configs(self, conf: dict) -> Dict[str, dict]:
-        rule_files = self.get_names(conf)
-        rule_configs = {filename: self.load_rule(filename) for filename in rule_files}
-        return rule_configs
+    def get_rule_configs(self) -> Dict[str, dict]:
+        rule_files = self.get_names(self.base_config)
+        return {filename: self.load_rule(filename) for filename in rule_files}
 
-    def get_names(self, conf: dict, use_rule: str = None) -> List[str]:
+    def get_names(self, conf: Config, use_rule: str = None) -> List[str]:
         # Passing a filename directly can bypass rules_folder and .yaml checks
         if use_rule and os.path.isfile(use_rule):
             return [use_rule]
-        rule_folder = conf["rules_folder"]
-        rule_files = list()
-        if "scan_subdirectories" in conf and conf["scan_subdirectories"]:
+        rule_folder = conf.rules_folder
+        rule_files = []
+        if conf.scan_subdirectories:
             for root, folders, files in os.walk(rule_folder):
                 for filename in files:
                     if use_rule and use_rule != filename:
@@ -38,12 +38,11 @@ class FileRulesLoader(RulesLoader):
                     rule_files.append(fullpath)
         return rule_files
 
-    def get_hashes(self, conf: dict, use_rule: str = None) -> Dict[str, str]:
-        rule_files = self.get_names(conf, use_rule)
-        rule_hashes = dict()
-        for rule_file in rule_files:
-            rule_hashes[rule_file] = self.get_rule_file_hash(rule_file)
-        return rule_hashes
+    def get_hashes(self, use_rule: str = None) -> Dict[str, str]:
+        rule_files = self.get_names(self.base_config, use_rule)
+        return {
+            rule_file: self.get_rule_file_hash(rule_file) for rule_file in rule_files
+        }
 
     def get_rule_config(self, filename: str) -> dict:
         """
@@ -53,8 +52,8 @@ class FileRulesLoader(RulesLoader):
         :return: dict with rule config
         """
         try:
-            return yaml_loader(filename)
-        except yaml.scanner.ScannerError as e:
+            return staticconf.loader.yaml_loader(filename)
+        except scanner.ScannerError as e:
             raise EAException("Could not parse file %s: %s" % (filename, e))
 
     def get_import_rule(self, rule_config: dict) -> str:

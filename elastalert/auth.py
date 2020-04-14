@@ -45,7 +45,7 @@ class Auth(object):
         if username and password:
             return username + ":" + password
 
-        if not aws_region and not os.environ.get("AWS_DEFAULT_REGION"):
+        if not (aws_region or os.environ.get("AWS_DEFAULT_REGION")):
             return None
 
         session = boto3.session.Session(

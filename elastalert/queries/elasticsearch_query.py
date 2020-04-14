@@ -22,7 +22,13 @@ log = logging.getLogger(__name__)
 class ElasticsearchQuery(BaseQuery):
     """"""
 
-    def __init__(self, rule_config: dict, callback: callable, persistent: dict, es: ElasticSearchClient=None):
+    def __init__(
+        self,
+        rule_config: dict,
+        callback: callable,
+        persistent: dict,
+        es: ElasticSearchClient = None,
+    ):
         super().__init__(rule_config, callback, persistent)
         self.scroll_id = None
         self.total_hits = 0
@@ -30,7 +36,7 @@ class ElasticsearchQuery(BaseQuery):
         self.num_dupes = 0
         self.persistent.setdefault("processed_hits", {})
         if not es:
-            es = elasticsearch_client(config.get_config())
+            es = elasticsearch_client(config.CFG().es_client)
         self.es = es
 
     def build_query(self, sort: bool = True):
@@ -55,12 +61,12 @@ class ElasticsearchQuery(BaseQuery):
                 }
             )
         extra_args = {}
-        if self.rule_config.get('_source_enabled'):
+        if self.rule_config.get("_source_enabled"):
             extra_args = {"_source_includes": self.rule_config["include"]}
         else:
-            self.query['stored_fields'] = self.rule_config['include']
+            self.query["stored_fields"] = self.rule_config["include"]
         scroll_keepalive = self.rule_config.get(
-            "scroll_keepalive", config.get_config().get("scroll_keepalive", "30s")
+            "scroll_keepalive", config.CFG().scroll_keepalive
         )
         try:
             log.debug("Running query: %s", self.query)
@@ -72,8 +78,7 @@ class ElasticsearchQuery(BaseQuery):
                     body=self.query,
                     ignore_unavailable=True,
                     size=self.rule_config.get(
-                        "max_query_size",
-                        config.get_config().get("max_query_size", 10000),
+                        "max_query_size", config.CFG().max_query_size
                     ),
                     scroll=scroll_keepalive,
                     **extra_args,
@@ -163,16 +168,19 @@ class ElasticsearchQuery(BaseQuery):
 
     def remove_duplicates(self, data: List[dict]) -> List[dict]:
         new_events = []
-        for event in data:
-            if event["_id"] in self.persistent["processed_hits"]:
-                continue
+        # TODO find better way of removing duplicates for aggregations where no _id is in dict
+        if type(data) == list:
+            for event in data:
+                if event["_id"] in self.persistent["processed_hits"]:
+                    continue
 
-            # Remember the new data's IDs
-            self.persistent["processed_hits"][event["_id"]] = lookup_es_key(
-                event, self.rule_config.get("timestamp_field", "@timestamp")
-            )
-            new_events.append(event)
-
+                # Remember the new data's IDs
+                self.persistent["processed_hits"][event["_id"]] = lookup_es_key(
+                    event, self.rule_config.get("timestamp_field", "@timestamp")
+                )
+                new_events.append(event)
+        else:
+            new_events = data
         return new_events
 
     @staticmethod

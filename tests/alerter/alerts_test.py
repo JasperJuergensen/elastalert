@@ -5,6 +5,7 @@ import subprocess
 
 import mock
 import pytest
+from elastalert import config
 from elastalert.alerter import (
     AlertaAlerter,
     CommandAlerter,
@@ -1364,8 +1365,24 @@ def test_ms_teams():
         "alert_subject": "Cool subject",
         "alert": [],
     }
-    rules_loader = FileRulesLoader({})
-    rules_loader.load_modules(rule)
+    config._cfg = conf = config.Config(
+        **{
+            "rules_folder": "test",
+            "run_every": {"minutes": 10},
+            "buffer_time": {"minutes": 10},
+            "scan_subdirectories": False,
+            "es_client": config.ESClient(
+                **{"es_host": "elasticsearch.test", "es_port": 12345,}
+            ),
+            "writeback_index": "test_index",
+            "writeback_alias": "test_alias",
+        }
+    )
+    rules_loader = FileRulesLoader(config.CFG())
+
+    with mock.patch("elastalert.elastalert.elasticsearch_client"):
+        rules_loader.load_modules(rule)
+
     alert = MsTeamsAlerter(rule)
     match = {"@timestamp": "2016-01-01T00:00:00", "somefield": "foobarbaz"}
     with mock.patch("requests.post") as mock_post_request:

@@ -12,15 +12,19 @@ from elastalert import config
 from elastalert.loaders import FileRulesLoader, loader_mapping
 from elastalert.utils.util import EAException
 
-test_config = {
-    "rules_folder": "test_folder",
-    "run_every": {"minutes": 10},
-    "buffer_time": {"minutes": 10},
-    "es_host": "elasticsearch.test",
-    "es_port": 12345,
-    "writeback_index": "test_index",
-    "writeback_alias": "test_alias",
-}
+test_config = config.Config(
+    **{
+        "rules_folder": "test",
+        "run_every": {"minutes": 10},
+        "buffer_time": {"minutes": 10},
+        "scan_subdirectories": False,
+        "es_client": config.ESClient(
+            **{"es_host": "elasticsearch.test", "es_port": 12345,}
+        ),
+        "writeback_index": "test_index",
+        "writeback_alias": "test_alias",
+    }
+)
 
 test_rule = {
     "es_host": "test_host",
@@ -62,12 +66,11 @@ def test_file_rules_loader_get_rule_configs():
             assert {
                 "test1.yaml": {"test": "test"},
                 "test2.yaml": {"test": "test"},
-            } == rules_loader.get_rule_configs(test_config)
+            } == rules_loader.get_rule_configs()
 
 
 def test_file_rules_loader_get_names():
     rules_loader = FileRulesLoader(test_config)
-    test_config["rules_folder"] = "test"
     with mock.patch(
         "elastalert.loaders.file_rules_loader.os.listdir",
         mock.MagicMock(return_value=["test1.yaml", "test2.yml"]),
@@ -76,10 +79,10 @@ def test_file_rules_loader_get_names():
             "elastalert.loaders.file_rules_loader.os.path.isfile",
             mock.MagicMock(return_value=True),
         ):
-            assert ["test/test1.yaml", "test/test2.yml"] == rules_loader.get_names(
-                test_config
-            )
-    test_config["scan_subdirectories"] = True
+            assert rules_loader.get_names(test_config) == [
+                "test/test1.yaml",
+                "test/test2.yml",
+            ]
     with mock.patch(
         "elastalert.loaders.file_rules_loader.os.walk",
         mock.MagicMock(

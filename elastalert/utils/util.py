@@ -7,7 +7,6 @@ import sys
 
 import pytz
 from elastalert import config
-from elastalert.auth import Auth
 from elastalert.clients import ElasticSearchClient
 from elastalert.exceptions import EAException, EARuntimeException
 from elastalert.utils.time import (
@@ -85,6 +84,7 @@ def _find_es_dict_by_key(lookup_dict, term):
     #  {'foo.bar': {'bar': 'ray'}} to look up foo.bar will return {'bar': 'ray'}, not 'ray'
     dict_cursor = lookup_dict
 
+    subkey = ""
     while term:
         split_results = re.split(r"\[(\d)\]", term, maxsplit=1)
         if len(split_results) == 3:
@@ -94,8 +94,6 @@ def _find_es_dict_by_key(lookup_dict, term):
             sub_term, index, term = split_results + [None, ""]
 
         subkeys = sub_term.split(".")
-
-        subkey = ""
 
         while len(subkeys) > 0:
             if not dict_cursor:
@@ -168,8 +166,8 @@ def format_index(index, start, end, add_extra=False):
     while start.date() <= end.date():
         indices.add(start.strftime(index))
         start += datetime.timedelta(days=1)
-    num = len(indices)
     if add_extra:
+        num = len(indices)
         while len(indices) == num:
             original_start -= datetime.timedelta(days=1)
             new_index = original_start.strftime(index)
@@ -183,10 +181,7 @@ def format_index(index, start, end, add_extra=False):
 
 
 def add_raw_postfix(field, is_five_or_above):
-    if is_five_or_above:
-        end = ".keyword"
-    else:
-        end = ".raw"
+    end = ".keyword" if is_five_or_above else ".raw"
     if not field.endswith(end):
         field += end
     return field
@@ -204,80 +199,9 @@ def replace_dots_in_field_names(document):
     return document
 
 
-def elasticsearch_client(conf) -> ElasticSearchClient:
+def elasticsearch_client(conf: config.ESClient) -> ElasticSearchClient:
     """ returns an :class:`ElasticSearchClient` instance configured using an es_conn_config """
-    es_conn_conf = build_es_conn_config(conf)
-    auth = Auth()
-    es_conn_conf["http_auth"] = auth(
-        host=es_conn_conf["es_host"],
-        username=es_conn_conf["es_username"],
-        password=es_conn_conf["es_password"],
-        aws_region=es_conn_conf["aws_region"],
-        profile_name=es_conn_conf["profile"],
-    )
-
-    return ElasticSearchClient(es_conn_conf)
-
-
-def build_es_conn_config(conf):
-    """ Given a conf dictionary w/ raw config properties 'use_ssl', 'es_host', 'es_port'
-    'es_username' and 'es_password', this will return a new dictionary
-    with properly initialized values for 'es_host', 'es_port', 'use_ssl' and 'http_auth' which
-    will be a basicauth username:password formatted string """
-    parsed_conf = {}
-    parsed_conf["use_ssl"] = os.environ.get("ES_USE_SSL", False)
-    parsed_conf["verify_certs"] = True
-    parsed_conf["ca_certs"] = None
-    parsed_conf["client_cert"] = None
-    parsed_conf["client_key"] = None
-    parsed_conf["http_auth"] = None
-    parsed_conf["es_username"] = None
-    parsed_conf["es_password"] = None
-    parsed_conf["aws_region"] = None
-    parsed_conf["profile"] = None
-    parsed_conf["es_host"] = os.environ.get("ES_HOST", conf["es_host"])
-    parsed_conf["es_port"] = int(os.environ.get("ES_PORT", conf["es_port"]))
-    parsed_conf["es_url_prefix"] = ""
-    parsed_conf["es_conn_timeout"] = conf.get("es_conn_timeout", 20)
-    parsed_conf["send_get_body_as"] = conf.get("es_send_get_body_as", "GET")
-
-    if os.environ.get("ES_USERNAME"):
-        parsed_conf["es_username"] = os.environ.get("ES_USERNAME")
-        parsed_conf["es_password"] = os.environ.get("ES_PASSWORD")
-    elif "es_username" in conf:
-        parsed_conf["es_username"] = conf["es_username"]
-        parsed_conf["es_password"] = conf["es_password"]
-
-    if "aws_region" in conf:
-        parsed_conf["aws_region"] = conf["aws_region"]
-
-    # Deprecated
-    if "boto_profile" in conf:
-        logging.warning('Found deprecated "boto_profile", use "profile" instead!')
-        parsed_conf["profile"] = conf["boto_profile"]
-
-    if "profile" in conf:
-        parsed_conf["profile"] = conf["profile"]
-
-    if "use_ssl" in conf:
-        parsed_conf["use_ssl"] = conf["use_ssl"]
-
-    if "verify_certs" in conf:
-        parsed_conf["verify_certs"] = conf["verify_certs"]
-
-    if "ca_certs" in conf:
-        parsed_conf["ca_certs"] = conf["ca_certs"]
-
-    if "client_cert" in conf:
-        parsed_conf["client_cert"] = conf["client_cert"]
-
-    if "client_key" in conf:
-        parsed_conf["client_key"] = conf["client_key"]
-
-    if "es_url_prefix" in conf:
-        parsed_conf["es_url_prefix"] = conf["es_url_prefix"]
-
-    return parsed_conf
+    return ElasticSearchClient(conf)
 
 
 def pytzfy(dt):
@@ -362,14 +286,14 @@ def get_segment_size(rule_config):
         and not rule_config.get("use_terms_query")
         and not rule_config.get("aggregation_query_element")
     ):
-        return rule_config.get("buffer_time", config.get_config()["buffer_time"])
+        return rule_config.get("buffer_time", config.CFG().buffer_time)
     elif rule_config.get("aggregation_query_element"):
         if rule_config.get("use_run_every_query_size"):
-            return config.get_config()["run_every"]
+            return config.CFG().run_every
         else:
-            return rule_config.get("buffer_time", config.get_config()["buffer_time"])
+            return rule_config.get("buffer_time", config.CFG().buffer_time)
     else:
-        return config.get_config()["run_every"]
+        return config.CFG().run_every
 
 
 def get_starttime(rule_config):
@@ -384,10 +308,10 @@ def get_starttime(rule_config):
     }
 
     try:
-        writeback_es = elasticsearch_client(config.get_config())
+        writeback_es = elasticsearch_client(config.CFG().es_client)
         doc_type = "elastalert_status"
         index = writeback_es.resolve_writeback_index(
-            config.get_config()["writeback_index"], doc_type
+            config.CFG().writeback_index, doc_type
         )
         res = writeback_es.search(
             index=index, size=1, body=query, _source_includes=["endtime", "rule_name"]
@@ -395,7 +319,7 @@ def get_starttime(rule_config):
         if res["hits"]["hits"]:
             endtime = ts_to_dt(res["hits"]["hits"][0]["_source"]["endtime"])
 
-            if ts_now() - endtime < config.get_config()["old_query_limit"]:
+            if ts_now() - endtime < config.CFG().old_query_limit:
                 return endtime
             else:
                 log.info(
@@ -405,7 +329,7 @@ def get_starttime(rule_config):
                 return None
     except (ElasticsearchException, KeyError) as e:
         raise EARuntimeException(
-            "Error querying for last run: %s" % (e),
+            "Error querying for last run: %s" % e,
             rule=rule_config["name"],
             original_exception=e,
         )
@@ -421,7 +345,7 @@ def set_starttime(rule_config, endtime):
             if last_run_end:
                 rule_config["starttime"] = last_run_end
                 adjust_start_time_for_overlapping_agg_query(rule_config)
-                adjust_start_time_for_interval_sync(rule_config, endtime)
+                adjust_start_time_for_interval_sync(rule_config)
                 rule_config["minimum_starttime"] = rule_config["starttime"]
                 return None
 
@@ -432,9 +356,7 @@ def set_starttime(rule_config, endtime):
         "use_terms_query"
     ):
         if not rule_config.get("scan_entire_timeframe"):
-            buffer_time = rule_config.get(
-                "buffer_time", config.get_config()["buffer_time"]
-            )
+            buffer_time = rule_config.get("buffer_time", config.CFG().buffer_time)
             buffer_delta = endtime - buffer_time
         else:
             buffer_delta = endtime - rule_config["timeframe"]
@@ -454,13 +376,13 @@ def set_starttime(rule_config, endtime):
         else:
             rule_config["starttime"] = buffer_delta
 
-        adjust_start_time_for_interval_sync(rule_config, endtime)
+        adjust_start_time_for_interval_sync(rule_config)
 
     else:
         if not rule_config.get("scan_entire_timeframe"):
             # Query from the end of the last run, if it exists, otherwise a run_every sized window
             rule_config["starttime"] = rule_config.get(
-                "previous_endtime", endtime - config.get_config()["run_every"]
+                "previous_endtime", endtime - config.CFG().run_every
             )
         else:
             rule_config["starttime"] = rule_config.get(
@@ -469,49 +391,53 @@ def set_starttime(rule_config, endtime):
 
 
 def adjust_start_time_for_overlapping_agg_query(rule_config):
-    if rule_config.get("aggregation_query_element"):
-        if (
-            rule_config.get("allow_buffer_time_overlap")
-            and not rule_config.get("use_run_every_query_size")
-            and (rule_config["buffer_time"] > rule_config["run_every"])
-        ):
-            rule_config["starttime"] = rule_config["starttime"] - (
-                rule_config["buffer_time"] - rule_config["run_every"]
-            )
-            rule_config["original_starttime"] = rule_config["starttime"]
+    if rule_config.get("aggregation_query_element") and (
+        rule_config.get("allow_buffer_time_overlap")
+        and not rule_config.get("use_run_every_query_size")
+        and (rule_config["buffer_time"] > rule_config["run_every"])
+    ):
+        rule_config["starttime"] = rule_config["starttime"] - (
+            rule_config["buffer_time"] - rule_config["run_every"]
+        )
+        rule_config["original_starttime"] = rule_config["starttime"]
 
 
-def adjust_start_time_for_interval_sync(rule_config, endtime):
+def adjust_start_time_for_interval_sync(rule_config):
     # If aggregation query adjust bucket offset
-    if rule_config.get("aggregation_query_element"):
+    if rule_config.get("aggregation_query_element") and rule_config.get(
+        "bucket_interval"
+    ):
+        es_interval_delta = rule_config.get("bucket_interval_timedelta")
+        unix_starttime = dt_to_unix(rule_config["starttime"])
+        es_interval_delta_in_sec = total_seconds(es_interval_delta)
+        offset = int(unix_starttime % es_interval_delta_in_sec)
 
-        if rule_config.get("bucket_interval"):
-            es_interval_delta = rule_config.get("bucket_interval_timedelta")
-            unix_starttime = dt_to_unix(rule_config["starttime"])
-            es_interval_delta_in_sec = total_seconds(es_interval_delta)
-            offset = int(unix_starttime % es_interval_delta_in_sec)
-
-            if rule_config.get("sync_bucket_interval"):
-                rule_config["starttime"] = unix_to_dt(unix_starttime - offset)
-                endtime = unix_to_dt(dt_to_unix(endtime) - offset)
-            else:
-                rule_config["bucket_offset_delta"] = offset
+        if rule_config.get("sync_bucket_interval"):
+            rule_config["starttime"] = unix_to_dt(unix_starttime - offset)
+        else:
+            rule_config["bucket_offset_delta"] = offset
 
 
 def get_index_start(index: str, timestamp_field: str = "@timestamp") -> str:
     """ Query for one result sorted by timestamp to find the beginning of the index.
 
     :param index: The index of which to find the earliest event.
+    :param timestamp_field: The name of the timestamp field
     :return: Timestamp of the earliest event.
     """
     query = {"sort": {timestamp_field: {"order": "asc"}}}
     try:
-        es = elasticsearch_client(config.get_config())
-        res = es.search(index=index, size=1, body=query,
-                                                 _source_includes=[timestamp_field], ignore_unavailable=True)
+        es = elasticsearch_client(config.CFG().es_client)
+        res = es.search(
+            index=index,
+            size=1,
+            body=query,
+            _source_includes=[timestamp_field],
+            ignore_unavailable=True,
+        )
     except ElasticsearchException as e:
         raise EARuntimeException(
-            "Elasticsearch query error: %s" % (e), query=query, original_exception=e
+            "Elasticsearch query error: %s" % e, query=query, original_exception=e
         )
     if len(res["hits"]["hits"]) == 0:
         # Index is completely empty, return a date before the epoch
@@ -558,7 +484,7 @@ def enhance_filter(rule):
     filters = rule["filter"]
     additional_terms = []
     for term in rule[listname]:
-        if not term.startswith("/") or not term.endswith("/"):
+        if not (term.startswith("/") and term.endswith("/")):
             additional_terms.append(rule["compare_key"] + ':"' + term + '"')
         else:
             # These are regular expressions and won't work if they are quoted

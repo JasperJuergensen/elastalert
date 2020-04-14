@@ -1,7 +1,7 @@
 import datetime
 import logging
 import time
-from abc import abstractmethod, abstractproperty
+from abc import abstractmethod
 from typing import List, Tuple
 
 from croniter import croniter
@@ -36,7 +36,7 @@ class Rule:
     def init_query_factory(self):
         pass
 
-    def __init__(self, rule_config: dict, args = None,  es=None):
+    def __init__(self, rule_config: dict, args=None, es=None):
         """"""
         self.rule_config = rule_config
         self.silence_cache = {}
@@ -46,12 +46,12 @@ class Rule:
         self.query_factory = self.init_query_factory()
         self.cumulative_hits = 0
         if not es:
-            self.es = elasticsearch_client(config.get_config())
+            self.es = elasticsearch_client(config.CFG().es_client)
 
     def process_failed_alerts(self):
         # If there are pending aggregate matches, try processing them
-        while self.rule_config['agg_matches']:
-            match = self.rule_config['agg_matches'].pop()
+        while self.rule_config["agg_matches"]:
+            match = self.rule_config["agg_matches"].pop()
             self.add_aggregated_alert(match, self.rule_config)
 
     def run_rule(self, endtime=None, starttime=None):
@@ -80,8 +80,10 @@ class Rule:
         tmp_endtime = self.rule_config["starttime"]
         while endtime - tmp_endtime > segment_size:
             tmp_endtime += segment_size
-            self.cumulative_hits += query.run(self.rule_config['starttime'], tmp_endtime)
-            self.rule_config['starttime'] = tmp_endtime
+            self.cumulative_hits += query.run(
+                self.rule_config["starttime"], tmp_endtime
+            )
+            self.rule_config["starttime"] = tmp_endtime
             self.garbage_collect(tmp_endtime)
         if self.rule_config.get("aggregation_query_element"):
             if endtime - tmp_endtime == segment_size:
@@ -166,7 +168,7 @@ class Rule:
             and ts_now() < self.silence_cache[silence_cache_key][0]
         ):
             return True
-        if config.get_config()["debug"]:
+        if config.CFG().debug:
             return False
 
         query = {
@@ -176,7 +178,7 @@ class Rule:
         try:
             res = self.es.search(
                 index=self.es.resolve_writeback_index(
-                    config.get_config()["writeback_index"], "silence"
+                    config.CFG().writeback_index, "silence"
                 ),
                 body=query,
                 ignore_unavailable=True,
@@ -248,6 +250,8 @@ class Rule:
         """ Send out an alert.
 
         :param matches: A list of matches.
+        :param retried: Already retried sending alert
+        :param alert_time: Time of alert
         """
         if not matches:
             return
@@ -272,7 +276,7 @@ class Rule:
                     return None
 
         # Don't send real alerts in debug mode
-        if config.get_config()["debug"]:
+        if config.CFG().debug:
             alerter = DebugAlerter(self.rule_config)
             alerter.alert(matches)
             return None
@@ -415,11 +419,11 @@ class Rule:
         try:
             if self.es.is_atleastsixtwo():
                 res = self.es.search(
-                    index=config.get_config()["writeback_index"], body=query, size=1
+                    index=config.CFG().writeback_index, body=query, size=1
                 )
             else:
                 res = self.es.deprecated_search(
-                    index=config.get_config()["writeback_index"],
+                    index=config.CFG().writeback_index,
                     doc_type="elastalert",
                     body=query,
                     size=1,
@@ -440,9 +444,7 @@ class Rule:
         body = {
             "match_body": match,
             "rule_name": rule["name"],
-            "alert_info": rule["alert"][0].get_info()
-            if not config.get_config()["debug"]
-            else {},
+            "alert_info": rule["alert"][0].get_info() if not config.CFG().debug else {},
             "alert_sent": alert_sent,
             "alert_time": alert_time,
         }
@@ -450,7 +452,7 @@ class Rule:
         if rule.get("include_match_in_root"):
             body.update({k: v for k, v in match.items() if not k.startswith("_")})
 
-        if config.get_config().get("add_metadata_alert"):
+        if config.CFG().add_metadata_alert:
             body["category"] = rule["category"]
             body["description"] = rule["description"]
             body["owner"] = rule["owner"]
@@ -475,7 +477,7 @@ class Rule:
             if isinstance(writeback_body[key], datetime.datetime):
                 writeback_body[key] = dt_to_ts(writeback_body[key])
 
-        if config.get_config()["debug"]:
+        if config.CFG().debug:
             log.info("Skipping writing to ES: %s" % (writeback_body))
             return None
 
@@ -484,10 +486,9 @@ class Rule:
 
         try:
             index = self.es.resolve_writeback_index(
-                config.get_config()["writeback_index"], doc_type
+                config.CFG().writeback_index, doc_type
             )
-            res = self.es.index(index=index, body=body)
-            return res
+            return self.es.index(index=index, body=body)
         except ElasticsearchException as e:
             log.exception("Error writing alert info to Elasticsearch: %s" % (e))
 

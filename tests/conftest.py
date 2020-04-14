@@ -6,6 +6,7 @@ import elastalert.elastalert
 import elastalert.utils.util
 import mock
 import pytest
+from elastalert import config
 from elastalert.ruletypes import AnyRule
 from elastalert.utils.time import dt_to_ts, ts_to_dt
 
@@ -100,12 +101,9 @@ class mock_es_client(object):
         )
 
 
-
-
-
 def mock_ruletype(conf, es):
     rule = AnyRule(conf, es=es)
-    rule.add_data =  mock.Mock()
+    rule.add_data = mock.Mock()
     rule.add_count_data = mock.Mock()
     rule.garbage_collect = mock.Mock()
     rule.add_terms_data = mock.Mock()
@@ -128,6 +126,43 @@ class mock_alert(object):
         return {"type": "mock"}
 
 
+@pytest.fixture
+def configured(monkeypatch):
+
+    test_args = mock.Mock()
+    test_args.config = "test_config"
+    test_args.rule = None
+    test_args.debug = False
+    test_args.es_debug_trace = None
+    test_args.silence = False
+
+    _conf = {
+        "args": test_args,
+        "debug": False,
+        "rules_loader": "test",
+        "rules_folder": "rules",
+        "run_every": datetime.timedelta(minutes=10),
+        "buffer_time": datetime.timedelta(minutes=5),
+        "alert_time_limit": datetime.timedelta(hours=24),
+        "es_client": config.ESClient(
+            es_host="es",
+            es_port=12345,
+            es_password="",
+            es_username="",
+            es_conn_timeout=1234,
+            es_url_prefix="es/test",
+            es_send_get_body_as="GET",
+        ),
+        "writeback_index": "wb",
+        "writeback_alias": "wb_a",
+        "max_query_size": 10000,
+        "old_query_limit": datetime.timedelta(weeks=1),
+        "disable_rules_on_error": False,
+        "scroll_keepalive": "30s",
+    }
+
+    monkeypatch.setattr(config, "_cfg", _conf)
+
 
 @pytest.fixture
 def ea():
@@ -137,6 +172,34 @@ def ea():
     test_args.debug = False
     test_args.es_debug_trace = None
     test_args.silence = False
+
+    _conf = {
+        "args": test_args,
+        "debug": False,
+        "rules_loader": "test",
+        "rules_folder": "rules",
+        "run_every": datetime.timedelta(minutes=10),
+        "buffer_time": datetime.timedelta(minutes=5),
+        "alert_time_limit": datetime.timedelta(hours=24),
+        "es_client": config.ESClient(
+            es_host="es",
+            es_port=12345,
+            es_password="",
+            es_username="",
+            es_conn_timeout=1234,
+            es_url_prefix="es/test",
+            es_send_get_body_as="GET",
+        ),
+        "mail_settings": config.MailSettings(notify_email=[]),
+        "writeback_index": "wb",
+        "writeback_alias": "wb_a",
+        "max_query_size": 10000,
+        "old_query_limit": datetime.timedelta(weeks=1),
+        "disable_rules_on_error": False,
+        "scroll_keepalive": "30s",
+    }
+
+    conf = config.Config(**_conf)
 
     rules = {
         "testrule": {
@@ -159,24 +222,6 @@ def ea():
             "run_every": datetime.timedelta(seconds=15),
         }
     }
-    conf = {
-        "args": test_args,
-        "debug": False,
-        "rules_loader": "test",
-        "rules_folder": "rules",
-        "run_every": datetime.timedelta(minutes=10),
-        "buffer_time": datetime.timedelta(minutes=5),
-        "alert_time_limit": datetime.timedelta(hours=24),
-        "es_host": "es",
-        "es_port": 14900,
-        "writeback_index": "wb",
-        "writeback_alias": "wb_a",
-        "rules": rules,
-        "max_query_size": 10000,
-        "old_query_limit": datetime.timedelta(weeks=1),
-        "disable_rules_on_error": False,
-        "scroll_keepalive": "30s",
-    }
     elastalert.elastalert.elasticsearch_client = mock_es_client
 
     class mock_rule_loader(object):
@@ -186,15 +231,24 @@ def ea():
             self.base_config = conf
             self.load_configuration = mock.Mock()
 
-        def load(self, conf, args):
+        def load(self, args):
             return rules
 
-        def get_hashes(self, conf, rule):
+        def get_hashes(self, rule):
+            return {}
+
+        def load_rule(self, str: str):
             return {}
 
     with mock.patch("elastalert.elastalert.BackgroundScheduler"):
-        with mock.patch("elastalert.elastalert.config.load_config") as load_config:
-            with mock.patch("elastalert.elastalert.loader_mapping") as loader_mapping:
+        with mock.patch(
+            "elastalert.elastalert.config.Config.load_config"
+        ) as load_config:
+            with mock.patch(
+                "elastalert.elastalert.loader_mapping"
+            ) as loader_mapping, mock.patch(
+                "elastalert.elastalert.config.configure_logging"
+            ):
                 loader_mapping.get.return_value = mock_rule_loader
                 load_config.return_value = conf
                 ea = elastalert.elastalert.ElastAlerter(["--pin_rules"])
@@ -205,11 +259,14 @@ def ea():
     ea.rule_es.index.return_value = {"_id": "ABCD", "created": True}
     ea.rules["testrule"]["type"] = mock_ruletype(rules["testrule"], ea.rule_es)
     ea.testrule = ea.rules["testrule"]["type"]
+    ea.conf = conf
 
     ea.writeback_es = mock_es_client()
     ea.writeback_es.is_atleastsixtwo.return_value = True
     ea.writeback_es.is_atleastfive.return_value = True
-    ea.writeback_es.search.return_value = {"hits": {"total": {"value": "0"}, "hits": []}}
+    ea.writeback_es.search.return_value = {
+        "hits": {"total": {"value": "0"}, "hits": []}
+    }
     ea.writeback_es.deprecated_search.return_value = {"hits": {"hits": []}}
     ea.writeback_es.index.return_value = {"_id": "ABCD", "created": True}
     ea.es = mock_es_client()

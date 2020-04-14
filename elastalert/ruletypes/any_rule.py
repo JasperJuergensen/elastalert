@@ -14,4 +14,3 @@ class AnyRule(RuleType):
     def add_data(self, data):
         for datum in data:
             self.add_match(datum)
-

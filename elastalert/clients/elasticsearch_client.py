@@ -2,6 +2,8 @@ import copy
 import time
 from typing import Union
 
+from elastalert import config
+from elastalert.auth import Auth
 from elasticsearch import Elasticsearch, RequestsHttpConnection, TransportError
 from elasticsearch.client import _make_path, query_params
 
@@ -22,30 +24,37 @@ class ElasticSearchClient(Elasticsearch):
         cls._cache[f"{host}:{port}"] = o
 
     def __new__(cls, *args, **kwargs) -> "ElasticSearchClient":
-        client = cls.__get_cache(args[0]["es_host"], args[0]["es_port"])
+        client = cls.__get_cache(args[0].es_host, args[0].es_port)
         if client:
             return client
         client = super(ElasticSearchClient, cls).__new__(cls)
-        cls.__add_cache(args[0]["es_host"], args[0]["es_port"], client)
+        cls.__add_cache(args[0].es_host, args[0].es_port, client)
         return client
 
-    def __init__(self, conf):
+    def __init__(self, conf: config.ESClient):
         """
         :arg conf: es_conn_config dictionary. Ref. :func:`~util.build_es_conn_config`
         """
+        auth = Auth()(
+            host=conf.es_host,
+            username=conf.es_username,
+            password=conf.es_password,
+            aws_region=conf.aws_region,
+            profile_name=conf.aws_profile,
+        )
         super(ElasticSearchClient, self).__init__(
-            host=conf["es_host"],
-            port=conf["es_port"],
-            url_prefix=conf["es_url_prefix"],
-            use_ssl=conf["use_ssl"],
-            verify_certs=conf["verify_certs"],
-            ca_certs=conf["ca_certs"],
+            host=conf.es_host,
+            port=conf.es_port,
+            url_prefix=conf.es_url_prefix,
+            use_ssl=conf.use_ssl,
+            verify_certs=conf.verify_certs,
+            ca_certs=conf.ca_certs,
             connection_class=RequestsHttpConnection,
-            http_auth=conf["http_auth"],
-            timeout=conf["es_conn_timeout"],
-            send_get_body_as=conf["send_get_body_as"],
-            client_cert=conf["client_cert"],
-            client_key=conf["client_key"],
+            http_auth=auth,
+            timeout=conf.es_conn_timeout,
+            send_get_body_as=conf.es_send_get_body_as,
+            client_cert=conf.client_cert,
+            client_key=conf.client_key,
         )
         self._conf = copy.copy(conf)
         self._es_version = None
@@ -271,6 +280,6 @@ class ElasticSearchClient(Elasticsearch):
         res = self.transport.perform_request(
             "GET", _make_path(index, doc_type, "_search"), params=params, body=body
         )
-        if type(res) == list or type(res) == tuple:
+        if type(res) in [list, tuple]:
             return res[1]
         return res

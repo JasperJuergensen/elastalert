@@ -23,10 +23,10 @@ match_bucket_filter:
 
 min_percentage: 95
 #max_percentage: 60
- 
+
 #bucket_interval:
 #  minutes: 1
-  
+
 #sync_bucket_interval: true
 #allow_buffer_time_overlap: true
 #use_run_every_query_size: true
@@ -35,4 +35,3 @@ min_percentage: 95
 # The alert is use when a match is found
 alert:
 - "debug"
-

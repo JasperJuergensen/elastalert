@@ -6,8 +6,8 @@ import dateutil
 import elastalert.create_index
 import elastalert.elastalert
 import pytest
+from elastalert import config
 from elastalert.clients import ElasticSearchClient
-from elastalert.utils.util import build_es_conn_config
 
 test_index = "test_index"
 
@@ -18,10 +18,11 @@ es_timeout = 10
 
 @pytest.fixture
 def es_client():
-    es_conn_config = build_es_conn_config(
-        {"es_host": es_host, "es_port": es_port, "es_conn_timeout": es_timeout}
+    return ElasticSearchClient(
+        config.ESClient(
+            **{"es_host": es_host, "es_port": es_port, "es_conn_timeout": es_timeout}
+        )
     )
-    return ElasticSearchClient(es_conn_config)
 
 
 @pytest.mark.elasticsearch

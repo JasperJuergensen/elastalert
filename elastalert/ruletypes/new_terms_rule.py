@@ -11,11 +11,7 @@ from elastalert.queries.elasticsearch_query import (
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils.time import ts_now, ts_to_dt
-from elastalert.utils.util import (
-    add_raw_postfix,
-    format_index,
-    lookup_es_key,
-)
+from elastalert.utils.util import add_raw_postfix, format_index, lookup_es_key
 
 log = logging.getLogger(__name__)
 

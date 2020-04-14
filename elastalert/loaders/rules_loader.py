@@ -4,11 +4,11 @@ import logging
 import os
 import sys
 from abc import ABCMeta, abstractmethod
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import jsonschema
 import yaml
-from elastalert import alerter, enhancements, ruletypes
+from elastalert import alerter, config, enhancements, ruletypes
 from elastalert.alerter import Alerter
 from elastalert.alerter.opsgenie_alerter import OpsGenieAlerter
 from elastalert.exceptions import EAConfigException, EAException
@@ -25,6 +25,21 @@ from elastalert.utils.time import (
 from elastalert.utils.util import get_module
 
 log = logging.getLogger(__name__)
+
+
+def remove_top_level_filter_query(rule_config):
+    """
+    Mutates Rule-Configs so they can be defined as sigma generated configs
+    Removes the Top-Level "query" element from the dict from the filter element
+    @param rule_config: Rule Configuration to mutate
+    """
+    new_filters = []
+    for es_filter in rule_config.get("filter", []):
+        if es_filter.get("query"):
+            new_filters.append(es_filter["query"])
+        else:
+            new_filters.append(es_filter)
+    rule_config["filter"] = new_filters
 
 
 class RulesLoader(metaclass=ABCMeta):
@@ -50,7 +65,7 @@ class RulesLoader(metaclass=ABCMeta):
         "cardinality": ruletypes.CardinalityRule,
         "metric_aggregation": ruletypes.MetricAggregationRule,
         "percentage_match": ruletypes.PercentageMatchRule,
-        'spike_aggregation': ruletypes.SpikeMetricAggregationRule,
+        "spike_aggregation": ruletypes.SpikeMetricAggregationRule,
     }
 
     # Used to map names of alerts to their classes
@@ -86,24 +101,21 @@ class RulesLoader(metaclass=ABCMeta):
 
     base_config = {}
 
-    def __init__(self, conf: dict):
+    def __init__(self, conf: config.Config):
         with open(
             os.path.join(os.path.dirname(__file__), "schema.yaml")
         ) as schema_file:
             # schema for rule yaml
             self.rule_schema = jsonschema.Draft7Validator(yaml.safe_load(schema_file))
 
-        self.base_config = copy.deepcopy(conf)
+        self.base_config: config.Config = copy.deepcopy(conf)
 
-    def load(self, conf: dict, args=None) -> Dict[str, dict]:
+    def load(self, args=None) -> Dict[str, dict]:
         # TODO rule_name as argument
-        rule_configs = self.get_rule_configs(conf)
-        loaded_rule_configs = dict()
+        rule_configs = self.get_rule_configs()
+        loaded_rule_configs = {}
         for rule_name, rule_config in rule_configs.items():
-            try:
-                self.parse_rule_config(rule_name, rule_config, conf)
-            except EAConfigException as e:
-                log.error("Invalid rule % skipped: %s", rule_name, e)
+            if not rule_config:
                 continue
             rule_name = rule_config["name"]
             if "is_enabled" in rule_config and not rule_config["is_enabled"]:
@@ -118,19 +130,16 @@ class RulesLoader(metaclass=ABCMeta):
         return loaded_rule_configs
 
     @abstractmethod
-    def get_rule_configs(self, conf: dict) -> Dict[str, dict]:
+    def get_rule_configs(self) -> Dict[str, dict]:
         """
         Loads the rule configurations
-
-        :param dict conf: The global configuration
         :return Dict[str, dict]: A dict with the rule configs. The key is the rule name and value is the config
         """
 
     @abstractmethod
-    def get_hashes(self, conf: dict, use_rule: str = None) -> Dict[str, str]:
+    def get_hashes(self, use_rule: str = None) -> Dict[str, str]:
         """
         Discover and get the hashes of all the rules as defined in the conf.
-        :param dict conf: Configuration
         :param str use_rule: Limit to only specified rule
         :return: Dict of rule name to hash
         :rtype: dict
@@ -148,37 +157,50 @@ class RulesLoader(metaclass=ABCMeta):
     def get_import_rule(self, rule_config: dict) -> str:
         """
         Retrieve the name of the rule to import.
-        :param dict rule: Rule dict
+        :param dict rule_config: Rule config dict
         :return: rule name
         :rtype: str
         """
         return rule_config["import"]
 
-    def load_rule(self, rule_name: str, imports: list = None) -> dict:
-        rule_config = self.get_rule_config(rule_name)
-        self.remove_top_level_filter_query(rule_config)
-        if "import" in rule_config:
-            if imports is None:
-                imports = list()
-            rule_config['rule_file'] = rule_name
-            import_rule_name = self.get_import_rule(rule_config)
-            if import_rule_name in imports:
-                raise EAException("Import loop detected")
-            self.import_rules.setdefault(rule_name, [])
-            self.import_rules[rule_name].append(import_rule_name)
-            imports.append(import_rule_name)
-            #rule_config.update(self.load_rule(import_rule_name, imports))
-            inner_rule = self.load_rule(import_rule_name, imports)
+    def load_rule(self, rule_path: str, imports: list = None) -> Optional[dict]:
 
-            # Special case for merging filters - if both files specify a filter merge (AND) them
-            if 'filter' in inner_rule and 'filter' in rule_config:
-                rule_config['filter'] = inner_rule['filter']+ rule_config['filter']
+        # recursive load rule (with imports)
+        def _load(_rule_path: str, _imports: list = None) -> dict:
+            _rule_config = self.get_rule_config(_rule_path)
+            remove_top_level_filter_query(_rule_config)
+            if "import" in _rule_config:
+                if _imports is None:
+                    _imports = []
+                _rule_config["rule_file"] = _rule_path
+                import_rule_name = self.get_import_rule(_rule_config)
+                if import_rule_name in _imports:
+                    raise EAException("Import loop detected")
+                self.import_rules.setdefault(_rule_path, [])
+                self.import_rules[_rule_path].append(import_rule_name)
+                _imports.append(import_rule_name)
+                inner_rule = _load(import_rule_name, _imports)
 
-            inner_rule.update(rule_config)
-            rule_config = inner_rule
+                # Special case for merging filters - if both files specify a filter merge (AND) them
+                if "filter" in inner_rule and "filter" in _rule_config:
+                    _rule_config["filter"] = (
+                        inner_rule["filter"] + _rule_config["filter"]
+                    )
+
+                inner_rule.update(_rule_config)
+                _rule_config = inner_rule
+            return _rule_config
+
+        rule_config = _load(rule_path, imports)
+        try:
+            # parse config
+            self.parse_rule_config(rule_path, rule_config)
+        except EAConfigException as e:
+            log.error("Invalid rule % skipped: %s", rule_path, e)
+            return None
         return rule_config
 
-    def parse_rule_config(self, rule_name: str, rule_config: dict, conf: dict):
+    def parse_rule_config(self, rule_name: str, rule_config: dict):
         try:
             self.rule_schema.validate(rule_config)
         except jsonschema.ValidationError as e:
@@ -243,8 +265,12 @@ class RulesLoader(metaclass=ABCMeta):
             raise EAException("Invalid time format used: %s" % e)
 
         # Set defaults, copy defaults from config.yaml
-        for key, val in list(self.base_config.items()):
-            rule_config.setdefault(key, val)
+        rule_config.setdefault("alert_text", self.base_config.alert_text)
+        rule_config.setdefault("alert_text_args", self.base_config.alert_text_args)
+        rule_config.setdefault("alert_text_type", self.base_config.alert_text_type)
+        rule_config.setdefault("buffer_time", self.base_config.buffer_time)
+        rule_config.setdefault("run_every", self.base_config.run_every)
+
         rule_config.setdefault("name", rule_name)
         rule_config.setdefault("realert", datetime.timedelta(seconds=0))
         rule_config.setdefault("aggregation", datetime.timedelta(seconds=0))
@@ -256,6 +282,9 @@ class RulesLoader(metaclass=ABCMeta):
         rule_config.setdefault("_source_enabled", True)
         rule_config.setdefault("use_local_time", True)
         rule_config.setdefault("description", "")
+
+        # set the identifier for access in self.rule (elastalert)
+        rule_config["identifier"] = rule_name
 
         # Set timestamp_type conversion function, used when generating queries and processing hits
         rule_config["timestamp_type"] = rule_config["timestamp_type"].strip().lower()
@@ -291,11 +320,15 @@ class RulesLoader(metaclass=ABCMeta):
             raise EAException("timestamp_type must be one of iso, unix, or unix_ms")
 
         # Add support for client ssl certificate auth
-        if "verify_certs" in conf:
-            rule_config.setdefault("verify_certs", conf.get("verify_certs"))
-            rule_config.setdefault("ca_certs", conf.get("ca_certs"))
-            rule_config.setdefault("client_cert", conf.get("client_cert"))
-            rule_config.setdefault("client_key", conf.get("client_key"))
+        if self.base_config.es_client.verify_certs:
+            rule_config.setdefault(
+                "verify_certs", self.base_config.es_client.verify_certs
+            )
+            rule_config.setdefault("ca_certs", self.base_config.es_client.ca_certs)
+            rule_config.setdefault(
+                "client_cert", self.base_config.es_client.client_cert
+            )
+            rule_config.setdefault("client_key", self.base_config.es_client.client_key)
 
         # Set HipChat options from global config
         rule_config.setdefault("hipchat_msg_color", "red")
@@ -373,16 +406,14 @@ class RulesLoader(metaclass=ABCMeta):
                         )
 
         # Check that doc_type is provided if use_count/terms_query
-        if rule_config.get("use_count_query") or rule_config.get("use_terms_query"):
-            if "doc_type" not in rule_config:
-                raise EAConfigException("doc_type must be specified.")
+        if (
+            rule_config.get("use_count_query") or rule_config.get("use_terms_query")
+        ) and "doc_type" not in rule_config:
+            raise EAConfigException("doc_type must be specified.")
 
         # Check that query_key is set if use_terms_query
-        if rule_config.get("use_terms_query"):
-            if "query_key" not in rule_config:
-                raise EAConfigException(
-                    "query_key must be specified with use_terms_query"
-                )
+        if rule_config.get("use_terms_query") and "query_key" not in rule_config:
+            raise EAConfigException("query_key must be specified with use_terms_query")
 
         # Warn if use_strf_index is used with %y, %M or %D
         # (%y = short year, %M = minutes, %D = full date)
@@ -450,7 +481,7 @@ class RulesLoader(metaclass=ABCMeta):
             ).with_traceback(sys.exc_info()[2])
         # Instantiate alerts only if we're not in debug mode
         # In debug mode alerts are not actually sent so don't bother instantiating them
-        if not args or not args.debug:
+        if not (args and args.debug):
             rule_config["alert"] = self.load_alerts(
                 rule_config, alert_field=rule_config["alert"]
             )
@@ -505,12 +536,3 @@ class RulesLoader(metaclass=ABCMeta):
             ).with_traceback(sys.exc_info()[2])
 
         return alert_field
-
-    def remove_top_level_filter_query(self, rule_config):
-        new_filters = []
-        for es_filter in rule_config.get('filter', []):
-            if es_filter.get('query'):
-                new_filters.append(es_filter['query'])
-            else:
-                new_filters.append(es_filter)
-        rule_config['filter'] = new_filters

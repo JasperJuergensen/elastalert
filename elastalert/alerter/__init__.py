@@ -1,5 +1,5 @@
-from elastalert.alerter.alerter import Alerter
 from elastalert.alerter.alerta_alerter import AlertaAlerter
+from elastalert.alerter.alerter import Alerter
 from elastalert.alerter.command_alerter import CommandAlerter
 from elastalert.alerter.debug_alerter import DebugAlerter
 from elastalert.alerter.email_alerter import EmailAlerter
