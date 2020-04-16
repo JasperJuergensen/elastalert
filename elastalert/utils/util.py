@@ -278,25 +278,7 @@ def should_scrolling_continue(rule_conf):
     return not stop_the_scroll
 
 
-def get_segment_size(rule_config):
-    """ The segment size is either buffer_size for queries which can overlap or run_every for queries
-    which must be strictly separate. This mimicks the query size for when ElastAlert is running continuously. """
-    if (
-        not rule_config.get("use_count_query")
-        and not rule_config.get("use_terms_query")
-        and not rule_config.get("aggregation_query_element")
-    ):
-        return rule_config.get("buffer_time", config.CFG().buffer_time)
-    elif rule_config.get("aggregation_query_element"):
-        if rule_config.get("use_run_every_query_size"):
-            return config.CFG().run_every
-        else:
-            return rule_config.get("buffer_time", config.CFG().buffer_time)
-    else:
-        return config.CFG().run_every
-
-
-def get_starttime(rule_config):
+def get_starttime(rule_config: dict) -> datetime:
     """ Query ES for the last time we ran this rule.
 
     :param rule_config: The rule configuration.
@@ -308,7 +290,9 @@ def get_starttime(rule_config):
     }
 
     try:
-        writeback_es = elasticsearch_client(config.CFG().es_client)
+        writeback_es = elasticsearch_client(
+            config.CFG().es_client
+        )  # TODO this should use the es config from the rule
         doc_type = "elastalert_status"
         index = writeback_es.resolve_writeback_index(
             config.CFG().writeback_index, doc_type
@@ -333,89 +317,6 @@ def get_starttime(rule_config):
             rule=rule_config["name"],
             original_exception=e,
         )
-
-
-def set_starttime(rule_config, endtime):
-    """ Given a rule and an endtime, sets the appropriate starttime for it. """
-    # This means we are starting fresh
-    if "starttime" not in rule_config:
-        if not rule_config.get("scan_entire_timeframe"):
-            # Try to get the last run from Elasticsearch
-            last_run_end = get_starttime(rule_config)
-            if last_run_end:
-                rule_config["starttime"] = last_run_end
-                adjust_start_time_for_overlapping_agg_query(rule_config)
-                adjust_start_time_for_interval_sync(rule_config)
-                rule_config["minimum_starttime"] = rule_config["starttime"]
-                return None
-
-    # Use buffer for normal queries, or run_every increments otherwise
-    # or, if scan_entire_timeframe, use timeframe
-
-    if not rule_config.get("use_count_query") and not rule_config.get(
-        "use_terms_query"
-    ):
-        if not rule_config.get("scan_entire_timeframe"):
-            buffer_time = rule_config.get("buffer_time", config.CFG().buffer_time)
-            buffer_delta = endtime - buffer_time
-        else:
-            buffer_delta = endtime - rule_config["timeframe"]
-        # If we started using a previous run, don't go past that
-        if (
-            "minimum_starttime" in rule_config
-            and rule_config["minimum_starttime"] > buffer_delta
-        ):
-            rule_config["starttime"] = rule_config["minimum_starttime"]
-        # If buffer_time doesn't bring us past the previous endtime, use that instead
-        elif (
-            "previous_endtime" in rule_config
-            and rule_config["previous_endtime"] < buffer_delta
-        ):
-            rule_config["starttime"] = rule_config["previous_endtime"]
-            adjust_start_time_for_overlapping_agg_query(rule_config)
-        else:
-            rule_config["starttime"] = buffer_delta
-
-        adjust_start_time_for_interval_sync(rule_config)
-
-    else:
-        if not rule_config.get("scan_entire_timeframe"):
-            # Query from the end of the last run, if it exists, otherwise a run_every sized window
-            rule_config["starttime"] = rule_config.get(
-                "previous_endtime", endtime - config.CFG().run_every
-            )
-        else:
-            rule_config["starttime"] = rule_config.get(
-                "previous_endtime", endtime - rule_config["timeframe"]
-            )
-
-
-def adjust_start_time_for_overlapping_agg_query(rule_config):
-    if rule_config.get("aggregation_query_element") and (
-        rule_config.get("allow_buffer_time_overlap")
-        and not rule_config.get("use_run_every_query_size")
-        and (rule_config["buffer_time"] > rule_config["run_every"])
-    ):
-        rule_config["starttime"] = rule_config["starttime"] - (
-            rule_config["buffer_time"] - rule_config["run_every"]
-        )
-        rule_config["original_starttime"] = rule_config["starttime"]
-
-
-def adjust_start_time_for_interval_sync(rule_config):
-    # If aggregation query adjust bucket offset
-    if rule_config.get("aggregation_query_element") and rule_config.get(
-        "bucket_interval"
-    ):
-        es_interval_delta = rule_config.get("bucket_interval_timedelta")
-        unix_starttime = dt_to_unix(rule_config["starttime"])
-        es_interval_delta_in_sec = total_seconds(es_interval_delta)
-        offset = int(unix_starttime % es_interval_delta_in_sec)
-
-        if rule_config.get("sync_bucket_interval"):
-            rule_config["starttime"] = unix_to_dt(unix_starttime - offset)
-        else:
-            rule_config["bucket_offset_delta"] = offset
 
 
 def get_index_start(index: str, timestamp_field: str = "@timestamp") -> str:

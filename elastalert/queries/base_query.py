@@ -1,4 +1,6 @@
 from abc import ABCMeta, abstractmethod
+from datetime import datetime, timedelta
+from typing import Tuple
 
 
 class BaseQuery(metaclass=ABCMeta):
@@ -18,17 +20,50 @@ class BaseQuery(metaclass=ABCMeta):
         self.query = None
         self.build_query()
 
-    def run(self, starttime=None, endtime=None) -> int:
+    def run(self, endtime: datetime) -> Tuple[datetime, datetime, int]:
         """
         Runs the query. This includes the query execution and the callback.
 
         This function raises a EARuntimeException if there is a problem so the rule execution
         cannot be continued
 
-        :param starttime: Start time for the query time range
         :param endtime: End time for the query time range
+
+        :return: A tuple with (starttime, endtime, hits)
         """
-        return self.run_query(starttime, endtime)
+        if self.rule_config.get("initial_starttime"):
+            starttime = self.rule_config["initial_starttime"]
+        else:
+            starttime = self.set_starttime(endtime)
+        cumulative_hits = 0
+        segment_size = self.get_segment_size()
+        tmp_endtime = starttime
+        while endtime - tmp_endtime > segment_size:
+            tmp_endtime += segment_size
+            cumulative_hits += self.run_query(starttime, tmp_endtime)
+            starttime = tmp_endtime
+            self.rule_config["type"].garbage_collect(tmp_endtime)
+        cumulative_hits += self.run_query(starttime, endtime)
+        self.rule_config["type"].garbage_collect(endtime)
+        return starttime, endtime, cumulative_hits
+
+    @abstractmethod
+    def get_segment_size(self) -> timedelta:
+        """
+        Calculates a segment size to mimick the query size
+
+        :return: the segment size
+        """
+
+    @abstractmethod
+    def set_starttime(self, endtime):
+        """
+        Calculates the starttime for the current query
+
+        :param starttime: the old starttime (can be None)
+        :param endtime: the endtime (can be None)
+        :return: the starttime
+        """
 
     @abstractmethod
     def build_query(self):

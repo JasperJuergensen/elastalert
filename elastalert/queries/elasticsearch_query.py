@@ -1,15 +1,16 @@
 import copy
 import logging
-from typing import List, Union
+from datetime import datetime, timedelta
+from typing import List, Tuple, Union
 
 from elastalert import config
 from elastalert.clients import ElasticSearchClient
 from elastalert.exceptions import EARuntimeException
 from elastalert.queries import BaseQuery
-from elastalert.utils.time import dt_to_ts, pretty_ts, ts_now
+from elastalert.utils.time import dt_to_ts, pretty_ts, total_seconds, ts_now
 from elastalert.utils.util import (
     elasticsearch_client,
-    get_index_start,
+    get_starttime,
     lookup_es_key,
     set_es_key,
     should_scrolling_continue,
@@ -44,7 +45,7 @@ class ElasticsearchQuery(BaseQuery):
         if sort:
             self.query["sort"] = [self.rule_config.get("timestamp_field", "@timestamp")]
 
-    def get_hits(self, starttime: str, endtime: str) -> List[dict]:
+    def get_hits(self, starttime: datetime, endtime: datetime) -> List[dict]:
         if starttime and endtime:
             query_starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
             query_endtime = self.rule_config.get("dt_to_ts", dt_to_ts)(endtime)
@@ -138,11 +139,33 @@ class ElasticsearchQuery(BaseQuery):
 
         return self.process_hits(self.rule_config, hits)
 
-    def run_query(self, starttime=None, endtime=None) -> int:
-        if starttime is None:
-            starttime = get_index_start(self.rule_config["index"])
-        if endtime is None:
-            endtime = ts_now()
+    def set_starttime(self, endtime) -> datetime:
+        # if it is the first run
+        if self.rule_config[
+            "type"
+        ].previous_endtime is None and not self.rule_config.get(
+            "scan_entire_timeframe"
+        ):
+            # try to get last endtime from es
+            last_run_end = get_starttime(self.rule_config)
+            if last_run_end:
+                return last_run_end
+
+        if self.rule_config.get("scan_entire_timeframe"):
+            starttime = endtime - self.rule_config["timeframe"]
+        else:
+            starttime = endtime - self.rule_config.get(
+                "buffer_time", config.CFG().buffer_time
+            )
+
+        # calculated starttime or previous_endtime depending on which is older. if previous_endtime is None use
+        # the current time because it's always newer than the starttime
+        return min(starttime, self.rule_config["type"].previous_endtime or ts_now())
+
+    def get_segment_size(self) -> timedelta:
+        return self.rule_config.get("buffer_time", config.CFG().buffer_time)
+
+    def run_query(self, starttime: datetime, endtime: datetime) -> int:
         data = self.get_hits(starttime, endtime)
         if data:
             unique_data = self.remove_duplicates(data)
@@ -252,16 +275,30 @@ class ElasticsearchQuery(BaseQuery):
 
 
 class ElasticsearchCountQuery(ElasticsearchQuery):
-    def get_hits(self, starttime: str, endtime: str) -> Union[dict, None]:
+    def set_starttime(self, endtime) -> datetime:
+        starttime = super().set_starttime(endtime)
+        if self.rule_config["previous_endtime"] and not self.rule_config.get(
+            "scan_entire_timeframe"
+        ):
+            # in this case it differs from a normal es query
+            starttime = endtime - config.CFG().run_every
+        return starttime
+
+    def get_segment_size(self) -> timedelta:
+        return config.CFG().run_every
+
+    def get_hits(self, starttime: datetime, endtime: datetime) -> Union[dict, None]:
         query = copy.deepcopy(self.query)
+        query_starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
+        query_endtime = self.rule_config.get("dt_to_ts", dt_to_ts)(endtime)
         if starttime and endtime:
             self.query["query"]["bool"].update(
                 {
                     "must": {
                         "range": {
                             self.rule_config.get("timestamp_field", "@timestamp"): {
-                                "gt": starttime,
-                                "lte": endtime,
+                                "gt": query_starttime,
+                                "lte": query_endtime,
                             }
                         }
                     }
@@ -302,6 +339,18 @@ class ElasticsearchCountQuery(ElasticsearchQuery):
 
 
 class ElasticsearchTermQuery(ElasticsearchQuery):
+    def set_starttime(self, endtime) -> datetime:
+        starttime = super().set_starttime(endtime)
+        if self.rule_config["previous_endtime"] and not self.rule_config.get(
+            "scan_entire_timeframe"
+        ):
+            # in this case it differs from a normal es query
+            starttime = endtime - config.CFG().run_every
+        return starttime
+
+    def get_segment_size(self) -> timedelta:
+        return config.CFG().run_every
+
     def build_query(self, **kwargs):
         super().build_query(False)
         self.query["query"].update(
@@ -318,15 +367,17 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
             }
         )
 
-    def get_hits(self, starttime: str, endtime: str) -> Union[dict, None]:
+    def get_hits(self, starttime: datetime, endtime: datetime) -> Union[dict, None]:
         if starttime and endtime:
+            query_starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
+            query_endtime = self.rule_config.get("dt_to_ts", dt_to_ts)(endtime)
             self.query["query"]["bool"].update(
                 {
                     "must": {
                         "range": {
                             self.rule_config.get("timestamp_field", "@timestamp"): {
-                                "gt": starttime,
-                                "lte": endtime,
+                                "gt": query_starttime,
+                                "lte": query_endtime,
                             }
                         }
                     }
@@ -376,6 +427,68 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
 
 
 class ElasticsearchAggregationQuery(ElasticsearchQuery):
+    def run(self, endtime: datetime) -> Tuple[datetime, datetime, int]:
+        starttime = self.set_starttime(endtime)
+        original_starttime = starttime
+        cumulative_hits = 0
+        segment_size = self.get_segment_size()
+        tmp_endtime = starttime
+        while endtime - tmp_endtime >= segment_size:
+            cumulative_hits += self.run_query(starttime, tmp_endtime)
+            starttime = tmp_endtime
+            self.rule_config["type"].garbage_collect(tmp_endtime)
+        if total_seconds(original_starttime - tmp_endtime) != 0:
+            endtime = tmp_endtime
+        return starttime, endtime, cumulative_hits
+
+    def set_starttime(self, endtime) -> datetime:
+        starttime = super().set_starttime(endtime)
+        starttime = self.adjust_start_time_for_overlapping_agg_query(starttime)
+        starttime = self.adjust_start_time_for_bucket_interval_sync(starttime)
+        return starttime
+
+    def adjust_start_time_for_bucket_interval_sync(
+        self, starttime: datetime
+    ) -> datetime:
+        """
+        When using bucket aggregations the starttime can be adjusted to match the first buckets start time
+
+        :param starttime: The original starttime
+        :return: The adjusted starttime
+        """
+        if self.rule_config.get("bucket_interval") and self.rule_config.get(
+            "sync_bucket_interval"
+        ):
+            offset = (
+                timedelta(seconds=starttime.timestamp())
+                % self.rule_config["bucket_interval_timedelta"]
+            )
+            starttime -= offset
+        return starttime
+
+    def adjust_start_time_for_overlapping_agg_query(
+        self, starttime: datetime
+    ) -> datetime:
+        """
+        Adjusts the starttime for aggregations when it is allowed that the buffer times overlap
+
+        :param starttime: The original starttime
+        :return: The adjusted starttime
+        """
+        if (
+            self.rule_config.get("allow_buffer_time_overlap")
+            and not self.rule_config.get("use_run_every_query_size")
+            and (self.rule_config["buffer_time"] > config.CFG().run_every)
+        ):
+            starttime -= self.rule_config["buffer_time"] - config.CFG().run_every
+        return starttime
+
+    def get_segment_size(self) -> timedelta:
+        if self.rule_config.get("use_run_every_query_size"):
+            return config.CFG().run_every
+        else:
+            return self.rule_config.get("buffer_time", config.CFG().buffer_time)
+
     def build_query(self, **kwargs):
         super().build_query(False)
         bucket_interval_period = self.rule_config.get("bucket_interval_period")
@@ -412,15 +525,17 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
                 }
         self.query.update({"aggs": aggs_element})
 
-    def get_hits(self, starttime: str, endtime: str) -> Union[dict, None]:
+    def get_hits(self, starttime: datetime, endtime: datetime) -> Union[dict, None]:
         if starttime and endtime:
+            query_starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
+            query_endtime = self.rule_config.get("dt_to_ts", dt_to_ts)(endtime)
             self.query["query"]["bool"].update(
                 {
                     "must": {
                         "range": {
                             self.rule_config.get("timestamp_field", "@timestamp"): {
-                                "gt": starttime,
-                                "lte": endtime,
+                                "gt": query_starttime,
+                                "lte": query_endtime,
                             }
                         }
                     }

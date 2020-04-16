@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+from typing import Union
 
 import dateutil
 import pytz
@@ -16,7 +17,7 @@ class DateTimeEncoder(json.JSONEncoder):
             return json.JSONEncoder.default(self, obj)
 
 
-def ts_to_dt(timestamp):
+def ts_to_dt(timestamp: str) -> datetime.datetime:
     if isinstance(timestamp, datetime.datetime):
         return timestamp
     dt = dateutil.parser.parse(timestamp)
@@ -69,7 +70,7 @@ def inc_ts(timestamp, milliseconds=1):
     return dt_to_ts(dt)
 
 
-def pretty_ts(timestamp, tz=True):
+def pretty_ts(timestamp: Union[str, datetime.datetime], tz=True) -> str:
     """Pretty-format the given timestamp (to be printed or logged hereafter).
     If tz, the timestamp will be converted to local time.
     Format: YYYY-MM-DD HH:MM TZ"""

@@ -18,12 +18,7 @@ from elastalert.utils.time import (
     ts_to_dt,
     unix_to_dt,
 )
-from elastalert.utils.util import (
-    elasticsearch_client,
-    get_segment_size,
-    lookup_es_key,
-    set_starttime,
-)
+from elastalert.utils.util import elasticsearch_client, lookup_es_key
 from elasticsearch import ElasticsearchException
 
 log = logging.getLogger(__name__)
@@ -45,6 +40,7 @@ class Rule:
         self.alerts_sent = 0
         self.query_factory = self.init_query_factory()
         self.cumulative_hits = 0
+        self.previous_endtime = None
         if not es:
             self.es = elasticsearch_client(config.CFG().es_client)
 
@@ -54,73 +50,38 @@ class Rule:
             match = self.rule_config["agg_matches"].pop()
             self.add_aggregated_alert(match, self.rule_config)
 
-    def run_rule(self, endtime=None, starttime=None):
+    def run_rule(
+        self, endtime: datetime
+    ) -> Tuple[datetime.datetime, datetime.datetime, int, int]:
         """"""
-
         self.process_failed_alerts()
         run_start = time.time()
-        if starttime:
-            self.rule_config["starttime"] = starttime
-        else:
-            set_starttime(self.rule_config, endtime)
-        self.rule_config["original_starttime"] = self.rule_config["starttime"]
-        self.rule_config["scrolling_cycle"] = 0
 
-        # Don't run if starttime was set to the future
-        if ts_now() <= self.rule_config["starttime"]:
-            log.warning(
-                "Attempted to use query start time in the future (%s), sleeping instead"
-                % (starttime)
-            )
-            return 0
-        self.cumulative_hits = 0
-        segment_size = get_segment_size(self.rule_config)
         query = self.query_factory.get_query_instance()
-
-        tmp_endtime = self.rule_config["starttime"]
-        while endtime - tmp_endtime > segment_size:
-            tmp_endtime += segment_size
-            self.cumulative_hits += query.run(
-                self.rule_config["starttime"], tmp_endtime
-            )
-            self.rule_config["starttime"] = tmp_endtime
-            self.garbage_collect(tmp_endtime)
-        if self.rule_config.get("aggregation_query_element"):
-            if endtime - tmp_endtime == segment_size:
-                self.cumulative_hits += query.run(
-                    tmp_endtime, self.rule_config["starttime"]
-                )
-            elif (
-                total_seconds(self.rule_config["original_starttime"] - tmp_endtime) == 0
-            ):
-                self.rule_config["starttime"] = self.rule_config["original_starttime"]
-                return None
-            else:
-                endtime = tmp_endtime
-        else:
-            # TODO evaluate if can be removed, if it is not an infinite loop is encountered
-            # self.cumulative_hits += query.run(self.rule_config["starttime"], endtime)
-            self.garbage_collect(endtime)
+        starttime, endtime, self.cumulative_hits = query.run(endtime)
 
         num_matches = len(self.matches)
         if not self.is_silenced(self.rule_config["name"] + "._silence"):
             self.process_matches()
 
         # Mark this endtime for next run's start
-        self.rule_config["previous_endtime"] = endtime
+        self.previous_endtime = endtime
 
         time_taken = time.time() - run_start
         # Write to ES that we've run this rule against this time period
         body = {
             "rule_name": self.rule_config["name"],
             "endtime": endtime,
-            "starttime": self.rule_config["original_starttime"],
+            "starttime": starttime,
             "matches": num_matches,
             "hits": self.cumulative_hits,
             "@timestamp": ts_now(),
             "time_taken": time_taken,
         }
         self.writeback("elastalert_status", body)
+        alerts_sent = self.alerts_sent
+        self.alerts_sent = 0
+        return starttime, endtime, self.cumulative_hits, alerts_sent
 
     def process_matches(self):
 
@@ -298,7 +259,7 @@ class Rule:
                     original_exception=e,
                 )
             else:
-                self.alerts_sent += 1  # TODO
+                self.alerts_sent += 1
                 alert_sent = True
 
         # Write the alert(s) to ES

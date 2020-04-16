@@ -328,7 +328,6 @@ class ElastAlerter(object):
         log.info("Background configuration change check run at %s", pretty_ts(ts_now()))
 
     def handle_rule_execution(self, rule_config):
-        self.thread_data.alerts_sent = 0
         next_run = datetime.datetime.utcnow() + rule_config["run_every"]
         # Set endtime based on the rule's delay
         delay = rule_config.get("query_delay")
@@ -363,8 +362,8 @@ class ElastAlerter(object):
 
         rule_config["has_run_once"] = True
         try:
-            num_matches = rule_config["type"].run_rule(
-                endtime, rule_config.get("initial_starttime")
+            starttime, endtime, num_matches, alerts_sent = rule_config["type"].run_rule(
+                endtime
             )
         except EARuntimeException as e:
             self.handle_error(
@@ -374,18 +373,15 @@ class ElastAlerter(object):
         except Exception as e:
             self.handle_uncaught_exception(e, rule_config)
         else:
-            old_starttime = pretty_ts(
-                rule_config.get("original_starttime"), rule_config.get("use_local_time")
-            )
+            old_starttime = pretty_ts(starttime)
             log.info(
                 "Ran %s from %s to %s: %s matches," " %s alerts sent",
                 rule_config["name"],
                 old_starttime,
                 pretty_ts(endtime, rule_config.get("use_local_time")),
                 num_matches,
-                self.thread_data.alerts_sent,
+                alerts_sent,
             )
-            self.thread_data.alerts_sent = 0
 
             if next_run < datetime.datetime.utcnow():
                 # We were processing for longer than our refresh interval
