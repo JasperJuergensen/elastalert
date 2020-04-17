@@ -24,7 +24,8 @@ def pytest_addoption(parser):
 
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--runelasticsearch"):
-        # --runelasticsearch given in cli: run elasticsearch tests, skip ordinary unit tests
+        # --runelasticsearch given in cli: run elasticsearch tests, skip ordinary unit
+        # tests
         skip_unit_tests = pytest.mark.skip(
             reason="not running when --runelasticsearch option is used to run"
         )
