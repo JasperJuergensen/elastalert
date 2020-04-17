@@ -161,7 +161,7 @@ def configured(monkeypatch):
         "scroll_keepalive": "30s",
     }
 
-    monkeypatch.setattr(config, "_cfg", _conf)
+    monkeypatch.setattr(config, "_cfg", config.Config(**_conf))
 
 
 @pytest.fixture

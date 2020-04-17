@@ -62,11 +62,11 @@ def assert_matches_have(matches, terms):
 
 
 @pytest.fixture(scope="function")
-def ea(ea, request):
+def ea_cls(ea, request):
     request.cls.ea = ea
 
 
-@pytest.mark.usefixtures("ea")
+@pytest.mark.usefixtures("ea_cls")
 class TermsTest(unittest.TestCase):
     def test_new_term(self):
         rules = {
@@ -94,7 +94,8 @@ class TermsTest(unittest.TestCase):
         self.ea.rule_es.info.return_value = {"version": {"number": "2.x.x"}}
         call_args = []
 
-        # search is called with a mutable dict containing timestamps, this is required to test
+        # search is called with a mutable dict containing timestamps, this is
+        # required to test
         def record_args(*args, **kwargs):
             call_args.append((copy.deepcopy(args), copy.deepcopy(kwargs)))
             return mock_res
@@ -299,7 +300,8 @@ class TermsTest(unittest.TestCase):
         assert rule.matches[0]["c"] == "key5"
         rule.matches = []
 
-        # New values in other fields that are not part of the composite key should not cause an alert
+        # New values in other fields that are not part of the composite key should
+        # not cause an alert
         rule.add_data(
             [
                 {
@@ -718,7 +720,8 @@ class RuleTest(unittest.TestCase):
         rule.add_terms_data(terms4)
         assert len(rule.matches) == 1
 
-        # Test that another alert doesn't fire immediately for userC but it does for userD
+        # Test that another alert doesn't fire immediately for userC but it does
+        # for userD
         rule.matches = []
         rule.add_terms_data(terms5)
         assert len(rule.matches) == 1
@@ -904,7 +907,8 @@ class RuleTest(unittest.TestCase):
         rule.garbage_collect(ts_to_dt("2014-09-26T12:00:45Z"))
         assert len(rule.matches) == 1
 
-        # After another garbage collection, since there are still no events, a new match is added
+        # After another garbage collection, since there are still no events, a new
+        # match is added
         rule.garbage_collect(ts_to_dt("2014-09-26T12:00:50Z"))
         assert len(rule.matches) == 2
 
@@ -976,7 +980,8 @@ class RuleTest(unittest.TestCase):
         # Add new data from key3. It will not immediately cause an alert
         rule.add_data([create_event(ts_to_dt("2014-09-26T12:00:20Z"), qk="key3")])
 
-        # key1 and key2 have not had any new data, so they will trigger the flatline alert
+        # key1 and key2 have not had any new data, so they will trigger the
+        # flatline alert
         timestamp = "2014-09-26T12:00:45Z"
         rule.garbage_collect(ts_to_dt(timestamp))
         assert len(rule.matches) == 2
@@ -984,7 +989,8 @@ class RuleTest(unittest.TestCase):
             [m["key"] for m in rule.matches if m["@timestamp"] == timestamp]
         )
 
-        # Next time the rule runs, all 3 keys still have no data, so all three will cause an alert
+        # Next time the rule runs, all 3 keys still have no data, so all three
+        # will cause an alert
         timestamp = "2014-09-26T12:01:20Z"
         rule.garbage_collect(ts_to_dt(timestamp))
         assert len(rule.matches) == 5

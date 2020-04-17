@@ -1176,7 +1176,8 @@ def test_jira_arbitrary_field_support():
         mock_jira.return_value.priorities.return_value = [mock_priority]
         mock_jira.return_value.fields.return_value = mock_fields
 
-        # Cause add_watcher to raise, which most likely means that the user did not exist
+        # Cause add_watcher to raise, which most likely means that the user did
+        # not exist
         mock_jira.return_value.add_watcher.side_effect = Exception()
 
         with pytest.raises(Exception) as exception:

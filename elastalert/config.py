@@ -171,6 +171,13 @@ class Config(object):
             ["run_every", "es_client", "writeback_index", "buffer_time"]
         )
 
+        args = Parser.parse_args(args)
+        filename = args.config or "config.yaml"
+        try:
+            conf = staticconf.loader.yaml_loader(filename)
+        except FileNotFoundError:
+            raise EAConfigException("Config file '{}' not found".format(filename))
+
         # Settings that can be derived from ENV variables
         env_settings = {
             "ES_USE_SSL": "use_ssl",
@@ -183,13 +190,10 @@ class Config(object):
 
         env = Env(ES_USE_SSL=bool)
 
-        args = Parser.parse_args(args)
-        filename = args.config or "config.yaml"
-        try:
-            conf = staticconf.loader.yaml_loader(filename)
-        except FileNotFoundError:
-            raise EAConfigException("Config file '{}' not found".format(filename))
-        conf["args"] = args
+        for env_var, conf_var in env_settings.items():
+            val = env(env_var, None)
+            if val is not None:
+                conf["es_client"][conf_var] = val
 
         conf["es_client"] = ESClient(**conf["es_client"])
         conf["mail_settings"] = (
@@ -201,10 +205,6 @@ class Config(object):
         # init logging from config and set log levels according to command line options
 
         conf["debug"] = True if args.debug else False
-        for env_var, conf_var in env_settings.items():
-            val = env(env_var, None)
-            if val is not None:
-                conf[conf_var] = val
 
         # Make sure we have all required globals
         if required_globals - frozenset(list(conf.keys())):
