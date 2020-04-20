@@ -1,7 +1,7 @@
 import copy
 
 from elastalert.ruletypes import FrequencyRule
-from elastalert.utils.event_window import EventWindow
+from elastalert.utils.event_window import CountEventWindow
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_to_dt
 
 
@@ -70,7 +70,8 @@ class FlatlineRule(FrequencyRule):
         default = ["all"] if "query_key" not in self.rules else []
         for key in list(self.occurrences.keys()) or default:
             self.occurrences.setdefault(
-                key, EventWindow(self.rules["timeframe"], getTimestamp=self.get_ts)
+                key,
+                CountEventWindow(self.rules["timeframe"], get_timestamp=self.get_ts),
             ).append(({self.ts_field: ts}, 0))
             self.first_event.setdefault(key, ts)
             self.check_for_match(key)

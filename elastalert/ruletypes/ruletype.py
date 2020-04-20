@@ -1,5 +1,7 @@
 import copy
 from abc import ABCMeta
+from datetime import datetime
+from typing import Dict, List
 
 from deprecated import deprecated
 from elastalert.rule import Rule
@@ -25,7 +27,7 @@ class RuleType(Rule, metaclass=ABCMeta):
         self.rules["priority"] = self.rules.get("priority", "2")
 
     @deprecated
-    def add_data(self, data):
+    def add_data(self, data: List[dict]):
         """ The function that the ElastAlert client calls with results from ES.
         Data is a list of dictionaries, from Elasticsearch.
 
@@ -57,7 +59,7 @@ class RuleType(Rule, metaclass=ABCMeta):
         return ""
 
     @deprecated
-    def add_count_data(self, counts):
+    def add_count_data(self, counts: Dict[datetime, int]):
         """ Gets called when a rule has use_count_query set to True. Called to add data from querying to the rule.
 
         :param counts: A dictionary mapping timestamps to hit counts.
@@ -65,7 +67,7 @@ class RuleType(Rule, metaclass=ABCMeta):
         raise NotImplementedError()
 
     @deprecated
-    def add_terms_data(self, terms):
+    def add_terms_data(self, terms: Dict[datetime, List[dict]]):
         """ Gets called when a rule has use_terms_query set to True.
 
         :param terms: A list of buckets with a key, corresponding to query_key, and the count """

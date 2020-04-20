@@ -6,7 +6,7 @@ from elastalert.queries.elasticsearch_query import (
 )
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
-from elastalert.utils.event_window import EventWindow
+from elastalert.utils.event_window import CountEventWindow
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_to_dt
 from elastalert.utils.util import hashable, lookup_es_key, new_get_event_ts
 
@@ -42,7 +42,7 @@ class FrequencyRule(RuleType):
 
         event = ({self.ts_field: ts}, count)
         self.occurrences.setdefault(
-            "all", EventWindow(self.rules["timeframe"], getTimestamp=self.get_ts)
+            "all", CountEventWindow(self.rules["timeframe"], get_timestamp=self.get_ts)
         ).append(event)
         self.check_for_match("all")
 
@@ -55,7 +55,9 @@ class FrequencyRule(RuleType):
                 )
                 self.occurrences.setdefault(
                     bucket["key"],
-                    EventWindow(self.rules["timeframe"], getTimestamp=self.get_ts),
+                    CountEventWindow(
+                        self.rules["timeframe"], get_timestamp=self.get_ts
+                    ),
                 ).append(event)
                 self.check_for_match(bucket["key"])
 
@@ -74,7 +76,8 @@ class FrequencyRule(RuleType):
 
             # Store the timestamps of recent occurrences, per key
             self.occurrences.setdefault(
-                key, EventWindow(self.rules["timeframe"], getTimestamp=self.get_ts)
+                key,
+                CountEventWindow(self.rules["timeframe"], get_timestamp=self.get_ts),
             ).append((event, 1))
             self.check_for_match(key, end=False)
 

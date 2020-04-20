@@ -9,6 +9,7 @@ from elastalert import config
 from elastalert.alerter import DebugAlerter
 from elastalert.enhancements.drop_match_exception import DropMatchException
 from elastalert.exceptions import EAException, EARuntimeException
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.utils.elastic import get_aggregation_key_value, get_query_key_value
 from elastalert.utils.time import (
     dt_to_ts,
@@ -28,7 +29,7 @@ class Rule:
     """"""
 
     @abstractmethod
-    def init_query_factory(self):
+    def init_query_factory(self) -> QueryFactory:
         pass
 
     def __init__(self, rule_config: dict, args=None, es=None):
