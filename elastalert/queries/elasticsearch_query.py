@@ -7,6 +7,7 @@ from elastalert import config
 from elastalert.clients import ElasticSearchClient
 from elastalert.exceptions import EARuntimeException
 from elastalert.queries import BaseQuery
+from elastalert.utils.arithmetic import gcd
 from elastalert.utils.time import dt_to_ts, pretty_ts, total_seconds, ts_now
 from elastalert.utils.util import (
     elasticsearch_client,
@@ -571,3 +572,25 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
         self.num_hits += res["hits"]["total"]["value"]
 
         return {endtime: payload}
+
+
+class ElasticsearchSpikeCountQuery(ElasticsearchCountQuery):
+    """Elasticsearch count query for spike rules"""
+
+    def get_segment_size(self) -> timedelta:
+        """
+        The segment size must be the gcd of run_every and the timeframe so that the
+        timeframes for the query can be aligned with the rule timeframe
+        """
+        return gcd(config.CFG().run_every, self.rule_config["timeframe"])
+
+
+class ElasticsearchSpikeTermQuery(ElasticsearchTermQuery):
+    """Elasticsearch term query for spike rules"""
+
+    def get_segment_size(self) -> timedelta:
+        """
+        The segment size must be the gcd of run_every and the timeframe so that the
+        timeframes for the query can be aligned with the rule timeframe
+        """
+        return gcd(config.CFG().run_every, self.rule_config["timeframe"])

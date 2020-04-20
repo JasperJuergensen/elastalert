@@ -97,12 +97,19 @@ oneOf:
       spike_type: {enum: ["up", "down", "both"]}
       timeframe: *timeframe
       use_count_query: {type: boolean}
-      doc_type: {type: string}
       use_terms_query: {type: boolean}
       terms_size: {type: integer}
       alert_on_new_data: {type: boolean}
       threshold_ref: {type: integer}
       threshold_cur: {type: integer}
+      ref_window_count: {type: integer}
+      gap_timeframe: *timeframe
+      spike_ref_metric: {enum: ["percentile", "mean", "median", "standard_deviation", "mad", "interquartile_range", "sum", "min", "max", "fixed"]}
+      spike_ref_metric_args:
+        oneOf:
+          - title: percentile
+            properties:
+              percentile: {type: number, minimum: 0, maximum: 1}
 
   - title: Spike Aggregation
     required: [spike_height, spike_type, timeframe]

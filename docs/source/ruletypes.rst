@@ -915,39 +915,73 @@ the 3rd event will trigger the alert on itself and add the other 2 events in a k
 Spike
 ~~~~~
 
-``spike``: This rule matches when the volume of events during a given time period is ``spike_height`` times larger or smaller
-than during the previous time period. It uses two sliding windows to compare the current and reference frequency
-of events. We will call this two windows "reference" and "current".
+``spike``: This rule matches when the volume of events during a given time period is larger or smaller than in a reference
+time period.
 
-This rule requires three additional options:
+This rule requires the following additional options:
 
-``spike_height``: The ratio of number of events in the last ``timeframe`` to the previous ``timeframe`` that when hit
-will trigger an alert.
+``spike_height``: TODO
 
-``spike_type``: Either 'up', 'down' or 'both'. 'Up' meaning the rule will only match when the number of events is ``spike_height`` times
-higher. 'Down' meaning the reference number is ``spike_height`` higher than the current number. 'Both' will match either.
+``spike_type``: Alerts when value exceeds upper boundary (up), lower boundary (down) or both (both).
 
-``timeframe``: The rule will average out the rate of events over this time period. For example, ``hours: 1`` means that the 'current'
-window will span from present to one hour ago, and the 'reference' window will span from one hour ago to two hours ago. The rule
-will not be active until the time elapsed from the first event is at least two timeframes. This is to prevent an alert being triggered
-before a baseline rate has been established. This can be overridden using ``alert_on_new_data``.
-
+``timeframe``: The rule will get the rate of events over this time period. For example, ``hours: 1`` means that the 'current'
+window will span from present to one hour ago, and the 'reference' window will span from one hour ago to two hours ago.
 
 Optional:
 
-``field_value``: When set, uses the value of the field in the document and not the number of matching documents.
-This is useful to monitor for example a temperature sensor and raise an alarm if the temperature grows too fast.
-Note that the means of the field on the reference and current windows are used to determine if the ``spike_height`` value is reached.
-Note also that the threshold parameters are ignored in this smode.
+``ref_window_count``: Number of reference windows. Default is 1. This can be used to calculate a metric of a series of reference
+windows.
 
+``gap_timeframe``: A timeframe between the 'current' window and the 'reference' window. For example, ``hours: 1`` means that the 'current'
+window will span from present to one hour ago, and the 'reference' window will span from two hours ago to three hours ago.
+The default is an empty timeframe (0 seconds).
 
-``threshold_ref``: The minimum number of events that must exist in the reference window for an alert to trigger. For example, if
-``spike_height: 3`` and ``threshold_ref: 10``, then the 'reference' window must contain at least 10 events and the 'current' window at
+``spike_ref_metric``: This metric will be calculated over the reference event windows. When this metric is used, there must
+be more then one reference window. For example, ``mean`` calculates the mean value of the counts in the reference windows
+and for an alert the count in the current window must be ``spike_height`` time higher or lower this value.
+
+``spike_ref_metric_args``: Arguments for the ``spike_ref_metric``. The arguments are a mapping (e.g. ``percentile: 0.5``)
+A table with arguments for different metrics is below.
+
+``spike_height_metric``: This metric will be calculated over the reference windows and should be logically one of the deviation metrics.
+To alert the count in the current window must be ``spike_height`` * the value of spike_height_metric times higher or
+lower than the value of the reference window.
+
+``spike_heigh_metric_args``: Arguments for the ``spike_height_metric``. The arguments are a mapping (e.g. ``percentile: 0.5``)
+A table with arguments for different metrics is below.
+
+..note:: Available metrics with options
+    +---------------------+----------------------------------------------------------------+
+    | Metric              | Options                                                        |
+    +=====================+================================================================+
+    | percentile          | ``percentile`` (float between 0 and 1, default: 0.95) optional |
+    +---------------------+----------------------------------------------------------------+
+    | mean                |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | median              |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | standard_deviation  |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | mad                 |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | interquartile_range |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | sum                 |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | min                 |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | max                 |                                                                |
+    +---------------------+----------------------------------------------------------------+
+    | fixed               |                                                                |
+    +---------------------+----------------------------------------------------------------+
+
+``threshold_ref``: The minimum reference metric value for an alert to trigger. For example, if
+``spike_height: 3`` and ``threshold_ref: 10``, then the reference metric value must be at least 10 and the current value at
 least three times that for an alert to be triggered.
 
 ``threshold_cur``: The minimum number of events that must exist in the current window for an alert to trigger. For example, if
 ``spike_height: 3`` and ``threshold_cur: 60``, then an alert will occur if the current window has more than 60 events and
-the reference window has less than a third as many.
+the reference metric value is less than a third.
 
 To illustrate the use of ``threshold_ref``, ``threshold_cur``, ``alert_on_new_data``, ``timeframe`` and ``spike_height`` together,
 consider the following examples::
@@ -1026,16 +1060,14 @@ consider the following examples::
 
 ``alert_on_new_data``: This option is only used if ``query_key`` is set. When this is set to true, any new ``query_key`` encountered may
 trigger an immediate alert. When set to false, baseline must be established for each new ``query_key`` value, and then subsequent spikes may
-cause alerts. Baseline is established after ``timeframe`` has elapsed twice since first occurrence.
+cause alerts. Baseline is established after ``timeframe`` * ``ref_count`` + ``gap_timeframe`` has elapsed since first occurrence.
 
 ``use_count_query``: If true, ElastAlert will poll Elasticsearch using the count api, and not download all of the matching documents. This is
 useful is you care only about numbers and not the actual data. It should also be used if you expect a large number of query hits, in the order
-of tens of thousands or more. ``doc_type`` must be set to use this.
-
-``doc_type``: Specify the ``_type`` of document to search for. This must be present if ``use_count_query`` or ``use_terms_query`` is set.
+of tens of thousands or more.
 
 ``use_terms_query``: If true, ElastAlert will make an aggregation query against Elasticsearch to get counts of documents matching
-each unique value of ``query_key``. This must be used with ``query_key`` and ``doc_type``. This will only return a maximum of ``terms_size``,
+each unique value of ``query_key``. This must be used with ``query_key``. This will only return a maximum of ``terms_size``,
 default 50, unique terms.
 
 ``terms_size``: When used with ``use_terms_query``, this is the maximum number of terms returned per query. Default is 50.
