@@ -1,9 +1,10 @@
+import json
+import time
 import uuid
 
+import requests
 from elastalert.alerter import Alerter
 from elastalert.exceptions import EAException
-from thehive4py.api import TheHiveApi
-from thehive4py.models import Alert, AlertArtifact, CustomFieldHelper
 
 
 class HiveAlerter(Alerter):
@@ -25,12 +26,14 @@ class HiveAlerter(Alerter):
         for mapping in self.rule.get("hive_observable_data_mapping", []):
             for observable_type, match_data_key in mapping.items():
                 try:
-                    artifacts.append(
-                        AlertArtifact(
-                            dataType=observable_type,
-                            data=match_data_key.format(**context),
-                        )
-                    )
+                    artifact = {
+                        "tlp": 2,
+                        "tags": [],
+                        "message": None,
+                        "dataType": observable_type,
+                        "data": match_data_key.format(**context),
+                    }
+                    artifacts.append(artifact)
                 except KeyError:
                     print(
                         "\nformat string\n{}\nmatch data\n{}".format(
@@ -41,9 +44,14 @@ class HiveAlerter(Alerter):
         if self.rule.get("hive_observables_key", "observables") in match:
             for mapping in match[self.rule.get("hive_observables_key", "observables")]:
                 for observable_type, observable_data in mapping.items():
-                    artifacts.append(
-                        AlertArtifact(dataType=observable_type, data=observable_data)
-                    )
+                    artifact = {
+                        "tlp": 2,
+                        "tags": [],
+                        "message": None,
+                        "dataType": observable_type,
+                        "data": observable_data,
+                    }
+                    artifacts.append(artifact)
 
         return artifacts
 
@@ -52,24 +60,25 @@ class HiveAlerter(Alerter):
         alert_config = {
             "artifacts": self.create_artifacts(match),
             "sourceRef": str(uuid.uuid4())[0:6],
+            "customFields": {},
+            "caseTemplate": None,
             "title": "{rule[index]}_{rule[name]}".format(**context),
+            "date": int(time.time()) * 1000,
         }
 
         alert_config.update(self.rule.get("hive_alert_config", {}))
 
+        custom_fields = {}
         for alert_config_field, alert_config_value in alert_config.items():
             if alert_config_field == "customFields":
-                custom_fields = CustomFieldHelper()
+                n = 0
                 for cf_key, cf_value in alert_config_value.items():
-                    try:
-                        func = getattr(custom_fields, "add_{}".format(cf_value["type"]))
-                    except AttributeError:
-                        raise Exception(
-                            "unsupported custom field type {}".format(cf_value["type"])
-                        )
-                    value = cf_value["value"].format(**context)
-                    func(cf_key, value)
-                alert_config[alert_config_field] = custom_fields.build()
+                    cf = {
+                        "order": n,
+                        cf_value["type"]: cf_value["value"].format(**context),
+                    }
+                    n += 1
+                    custom_fields[cf_key] = cf
             elif isinstance(alert_config_value, str):
                 if alert_config_field in ["tlp", "severity"]:
                     alert_config[alert_config_field] = int(
@@ -87,21 +96,29 @@ class HiveAlerter(Alerter):
                     except (AttributeError, KeyError, IndexError):
                         formatted_list.append(element)
                 alert_config[alert_config_field] = formatted_list
+        if custom_fields:
+            alert_config["customFields"] = custom_fields
 
         return alert_config
 
     def send_to_thehive(self, alert_config):
         connection_details = self.rule["hive_connection"]
 
-        api = TheHiveApi(
-            connection_details.get("hive_host"),
-            connection_details.get("hive_apikey", ""),
-            proxies=connection_details.get("hive_proxies", {"http": "", "https": ""}),
-            cert=connection_details.get("hive_verify", False),
+        alert_body = json.dumps(alert_config, indent=4, sort_keys=True)
+        req = "{}:{}/api/alert".format(
+            connection_details["hive_host"], connection_details["hive_port"]
         )
-
-        alert = Alert(**alert_config)
-        response = api.create_alert(alert)
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer {}".format(
+                connection_details.get("hive_api_key", "")
+            ),
+        }
+        proxies = connection_details.get("hive_proxies", {"http": "", "https": ""})
+        verify = connection_details.get("hive_verify", False)
+        response = requests.post(
+            req, headers=headers, data=alert_body, proxies=proxies, verify=verify
+        )
 
         if response.status_code != 201:
             raise EAException(
