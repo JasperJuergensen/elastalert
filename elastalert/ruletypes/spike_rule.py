@@ -8,7 +8,7 @@ from elastalert.queries.elasticsearch_query import (
 )
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
-from elastalert.utils.event_window import EventWindow
+from elastalert.utils.event_window import CountEventWindow
 from elastalert.utils.time import pretty_ts
 from elastalert.utils.util import hashable, lookup_es_key, new_get_event_ts
 
@@ -100,10 +100,11 @@ class SpikeRule(RuleType):
         self.first_event.setdefault(qk, event)
 
         self.ref_windows.setdefault(
-            qk, EventWindow(self.timeframe, getTimestamp=self.get_ts)
+            qk, CountEventWindow(self.timeframe, get_timestamp=self.get_ts)
         )
         self.cur_windows.setdefault(
-            qk, EventWindow(self.timeframe, self.ref_windows[qk].append, self.get_ts)
+            qk,
+            CountEventWindow(self.timeframe, self.ref_windows[qk].append, self.get_ts),
         )
 
         self.cur_windows[qk].append((event, count))
