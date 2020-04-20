@@ -6,8 +6,8 @@ import dateutil
 import elastalert.create_index
 import elastalert.elastalert
 import pytest
-from elastalert import ElasticSearchClient
-from elastalert.utils.util import build_es_conn_config
+from elastalert import config
+from elastalert.clients import ElasticSearchClient
 
 test_index = "test_index"
 
@@ -18,10 +18,11 @@ es_timeout = 10
 
 @pytest.fixture
 def es_client():
-    es_conn_config = build_es_conn_config(
-        {"es_host": es_host, "es_port": es_port, "es_conn_timeout": es_timeout}
+    return ElasticSearchClient(
+        config.ESClient(
+            **{"es_host": es_host, "es_port": es_port, "es_conn_timeout": es_timeout}
+        )
     )
-    return ElasticSearchClient(es_conn_config)
 
 
 @pytest.mark.elasticsearch
@@ -29,7 +30,8 @@ class TestElasticsearch(object):
     # TODO perform teardown removing data inserted into Elasticsearch
     # Warning!!!: Test class is not erasing its testdata on the Elasticsearch server.
     # This is not a problem as long as the data is manually removed or the test environment
-    # is torn down after the test run(eg. running tests in a test environment such as Travis)
+    # is torn down after the test run(eg. running tests in a test environment
+    # such as Travis)
     def test_create_indices(self, es_client):
         elastalert.create_index.create_index_mappings(
             es_client=es_client, ea_index=test_index
@@ -58,9 +60,9 @@ class TestElasticsearch(object):
         ) + datetime.timedelta(days=1)
         ea.rules[0]["aggregate_by_match_time"] = True
         match = {"@timestamp": match_timestamp, "num_hits": 0, "num_matches": 3}
-        ea.writeback_es = es_client
+        ea.es = es_client
         res = ea.add_aggregated_alert(match, ea.rules[0])
-        if ea.writeback_es.is_atleastsix():
+        if ea.es.is_atleastsix():
             assert res["result"] == "created"
         else:
             assert res["created"] is True
@@ -74,9 +76,9 @@ class TestElasticsearch(object):
         until_timestamp = datetime.datetime.now(tz=dateutil.tz.tzutc()).replace(
             microsecond=0
         ) + datetime.timedelta(days=1)
-        ea.writeback_es = es_client
+        ea.es = es_client
         res = ea.set_realert(ea.rules[0]["name"], until_timestamp, 0)
-        if ea.writeback_es.is_atleastsix():
+        if ea.es.is_atleastsix():
             assert res["result"] == "created"
         else:
             assert res["created"] is True

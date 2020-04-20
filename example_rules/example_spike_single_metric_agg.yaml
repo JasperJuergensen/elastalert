@@ -52,4 +52,3 @@ filter:
 # The alert is use when a match is found
 alert:
 - "debug"
-

@@ -1,10 +1,9 @@
-# flake8: noqa
 import os.path
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from elastalert.utils.util import EAException
+from elastalert.exceptions import EAException
 
 dashboard_temp = {
     "editable": True,

@@ -1,10 +1,17 @@
 from abc import ABCMeta, abstractmethod
 
+from elastalert.queries.elasticsearch_query import ElasticsearchQuery
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 
 
 class CompareRule(RuleType, metaclass=ABCMeta):
     """ A base class for matching a specific term by passing it to a compare function """
+
+    def init_query_factory(self):
+        return QueryFactory(
+            ElasticsearchQuery, self.rule_config, self.add_data, self.es
+        )
 
     required_options = frozenset(["compound_compare_key"])
 

@@ -13,10 +13,10 @@ metric_agg_key: system.cpu.user.pct
 metric_agg_type: avg
 query_key: beat.hostname
 doc_type: metricsets
-  
+
 bucket_interval:
   minutes: 5
-  
+
 sync_bucket_interval: true
 #allow_buffer_time_overlap: true
 #use_run_every_query_size: true
@@ -32,4 +32,3 @@ filter:
 # The alert is use when a match is found
 alert:
 - "debug"
-

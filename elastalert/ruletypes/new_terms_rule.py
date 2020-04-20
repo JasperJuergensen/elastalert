@@ -4,14 +4,14 @@ import logging
 import sys
 
 from elastalert.exceptions import EAException
+from elastalert.queries.elasticsearch_query import (
+    ElasticsearchQuery,
+    ElasticsearchTermQuery,
+)
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils.time import ts_now, ts_to_dt
-from elastalert.utils.util import (
-    add_raw_postfix,
-    elasticsearch_client,
-    format_index,
-    lookup_es_key,
-)
+from elastalert.utils.util import add_raw_postfix, format_index, lookup_es_key
 
 log = logging.getLogger(__name__)
 
@@ -19,8 +19,16 @@ log = logging.getLogger(__name__)
 class NewTermsRule(RuleType):
     """ Alerts on a new value in a list of fields. """
 
-    def __init__(self, rule, args=None):
-        super(NewTermsRule, self).__init__(rule, args)
+    def init_query_factory(self):
+        query_class = ElasticsearchQuery
+        callback = self.add_data
+        if self.rule_config.get("use_terms_query"):
+            query_class = ElasticsearchTermQuery
+            callback = self.add_terms_data
+        return QueryFactory(query_class, self.rule_config, callback, self.es)
+
+    def __init__(self, rule, *args, **kwargs):
+        super(NewTermsRule, self).__init__(rule, *args, **kwargs)
         self.seen_values = {}
         # Allow the use of query_key or fields
         if "fields" not in self.rules:
@@ -63,7 +71,6 @@ class NewTermsRule(RuleType):
 
     def get_all_terms(self, args):
         """ Performs a terms aggregation for each field to get every existing term. """
-        self.es = elasticsearch_client(self.rules)
         window_size = datetime.timedelta(
             **self.rules.get("terms_window_size", {"days": 30})
         )

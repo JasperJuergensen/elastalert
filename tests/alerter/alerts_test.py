@@ -5,6 +5,7 @@ import subprocess
 
 import mock
 import pytest
+from elastalert import config
 from elastalert.alerter import (
     AlertaAlerter,
     CommandAlerter,
@@ -33,14 +34,14 @@ class mock_rule:
 
 
 def test_basic_match_string(ea):
-    ea.rules[0]["top_count_keys"] = ["username"]
+    ea.rules["testrule"]["top_count_keys"] = ["username"]
     match = {
         "@timestamp": "1918-01-17",
         "field": "value",
         "top_events_username": {"bob": 10, "mallory": 5},
     }
-    alert_text = str(BasicMatchString(ea.rules[0], match))
-    assert "anytest" in alert_text
+    alert_text = str(BasicMatchString(ea.rules["testrule"], match))
+    assert "testrule" in alert_text
     assert "some stuff happened" in alert_text
     assert "username" in alert_text
     assert "bob: 10" in alert_text
@@ -48,35 +49,35 @@ def test_basic_match_string(ea):
 
     # Non serializable objects don't cause errors
     match["non-serializable"] = {open: 10}
-    alert_text = str(BasicMatchString(ea.rules[0], match))
+    alert_text = str(BasicMatchString(ea.rules["testrule"], match))
 
     # unicode objects dont cause errors
     match["snowman"] = "☃"
-    alert_text = str(BasicMatchString(ea.rules[0], match))
+    alert_text = str(BasicMatchString(ea.rules["testrule"], match))
 
     # Pretty printed objects
     match.pop("non-serializable")
     match["object"] = {"this": {"that": [1, 2, "3"]}}
-    alert_text = str(BasicMatchString(ea.rules[0], match))
+    alert_text = str(BasicMatchString(ea.rules["testrule"], match))
     assert (
         '"this": {\n        "that": [\n            1,\n            2,\n            "3"\n        ]\n    }'
         in alert_text
     )
 
-    ea.rules[0]["alert_text"] = "custom text"
-    alert_text = str(BasicMatchString(ea.rules[0], match))
+    ea.rules["testrule"]["alert_text"] = "custom text"
+    alert_text = str(BasicMatchString(ea.rules["testrule"], match))
     assert "custom text" in alert_text
     assert "anytest" not in alert_text
 
-    ea.rules[0]["alert_text_type"] = "alert_text_only"
-    alert_text = str(BasicMatchString(ea.rules[0], match))
+    ea.rules["testrule"]["alert_text_type"] = "alert_text_only"
+    alert_text = str(BasicMatchString(ea.rules["testrule"], match))
     assert "custom text" in alert_text
     assert "some stuff happened" not in alert_text
     assert "username" not in alert_text
     assert "field: value" not in alert_text
 
-    ea.rules[0]["alert_text_type"] = "exclude_fields"
-    alert_text = str(BasicMatchString(ea.rules[0], match))
+    ea.rules["testrule"]["alert_text_type"] = "exclude_fields"
+    alert_text = str(BasicMatchString(ea.rules["testrule"], match))
     assert "custom text" in alert_text
     assert "some stuff happened" in alert_text
     assert "username" in alert_text
@@ -85,7 +86,7 @@ def test_basic_match_string(ea):
 
 def test_jira_formatted_match_string(ea):
     match = {"foo": {"bar": ["one", 2, "three"]}, "top_events_poof": "phew"}
-    alert_text = str(JiraFormattedMatchString(ea.rules[0], match))
+    alert_text = str(JiraFormattedMatchString(ea.rules["testrule"], match))
     tab = 4 * " "
     expected_alert_text_snippet = (
         "{code}{\n"
@@ -1175,7 +1176,8 @@ def test_jira_arbitrary_field_support():
         mock_jira.return_value.priorities.return_value = [mock_priority]
         mock_jira.return_value.fields.return_value = mock_fields
 
-        # Cause add_watcher to raise, which most likely means that the user did not exist
+        # Cause add_watcher to raise, which most likely means that the user did
+        # not exist
         mock_jira.return_value.add_watcher.side_effect = Exception()
 
         with pytest.raises(Exception) as exception:
@@ -1189,6 +1191,7 @@ def test_jira_arbitrary_field_support():
         )
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 def test_kibana(ea):
     rule = {
         "filter": [{"query": {"query_string": {"query": "xy:z"}}}],
@@ -1363,8 +1366,24 @@ def test_ms_teams():
         "alert_subject": "Cool subject",
         "alert": [],
     }
-    rules_loader = FileRulesLoader({})
-    rules_loader.load_modules(rule)
+    config._cfg = conf = config.Config(
+        **{
+            "rules_folder": "test",
+            "run_every": {"minutes": 10},
+            "buffer_time": {"minutes": 10},
+            "scan_subdirectories": False,
+            "es_client": config.ESClient(
+                **{"es_host": "elasticsearch.test", "es_port": 12345,}
+            ),
+            "writeback_index": "test_index",
+            "writeback_alias": "test_alias",
+        }
+    )
+    rules_loader = FileRulesLoader(config.CFG())
+
+    with mock.patch("elastalert.elastalert.elasticsearch_client"):
+        rules_loader.load_modules(rule)
+
     alert = MsTeamsAlerter(rule)
     match = {"@timestamp": "2016-01-01T00:00:00", "somefield": "foobarbaz"}
     with mock.patch("requests.post") as mock_post_request:
@@ -2258,7 +2277,7 @@ def test_pagerduty_alerter_custom_alert_subject_with_args_specifying_trigger():
 
 
 def test_alert_text_kw(ea):
-    rule = ea.rules[0].copy()
+    rule = ea.rules["testrule"].copy()
     rule["alert_text"] = "{field} at {time}"
     rule["alert_text_kw"] = {"@timestamp": "time", "field": "field"}
     match = {"@timestamp": "1918-01-17", "field": "value"}
@@ -2268,7 +2287,7 @@ def test_alert_text_kw(ea):
 
 
 def test_alert_text_global_substitution(ea):
-    rule = ea.rules[0].copy()
+    rule = ea.rules["testrule"].copy()
     rule["owner"] = "the owner from rule"
     rule["priority"] = "priority from rule"
     rule["abc"] = "abc from rule"
@@ -2290,7 +2309,7 @@ def test_alert_text_global_substitution(ea):
 
 
 def test_alert_text_kw_global_substitution(ea):
-    rule = ea.rules[0].copy()
+    rule = ea.rules["testrule"].copy()
     rule["foo_rule"] = "foo from rule"
     rule["owner"] = "the owner from rule"
     rule["abc"] = "abc from rule"

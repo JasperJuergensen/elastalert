@@ -1,6 +1,12 @@
 from elastalert.exceptions import EAException
+from elastalert.queries.elasticsearch_query import (
+    ElasticsearchCountQuery,
+    ElasticsearchQuery,
+    ElasticsearchTermQuery,
+)
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
-from elastalert.utils import EventWindow
+from elastalert.utils.event_window import CountEventWindow
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_to_dt
 from elastalert.utils.util import hashable, lookup_es_key, new_get_event_ts
 
@@ -10,8 +16,19 @@ class FrequencyRule(RuleType):
 
     required_options = frozenset(["num_events", "timeframe"])
 
-    def __init__(self, *args):
-        super(FrequencyRule, self).__init__(*args)
+    def init_query_factory(self):
+        query_class = ElasticsearchQuery
+        callback = self.add_data
+        if self.rule_config.get("use_count_query"):
+            query_class = ElasticsearchCountQuery
+            callback = self.add_count_data
+        elif self.rule_config.get("use_terms_query"):
+            query_class = ElasticsearchTermQuery
+            callback = self.add_terms_data
+        return QueryFactory(query_class, self.rule_config, callback, self.es)
+
+    def __init__(self, *args, **kwargs):
+        super(FrequencyRule, self).__init__(*args, **kwargs)
         self.ts_field = self.rules.get("timestamp_field", "@timestamp")
         self.get_ts = new_get_event_ts(self.ts_field)
         self.attach_related = self.rules.get("attach_related", False)
@@ -25,7 +42,7 @@ class FrequencyRule(RuleType):
 
         event = ({self.ts_field: ts}, count)
         self.occurrences.setdefault(
-            "all", EventWindow(self.rules["timeframe"], getTimestamp=self.get_ts)
+            "all", CountEventWindow(self.rules["timeframe"], get_timestamp=self.get_ts)
         ).append(event)
         self.check_for_match("all")
 
@@ -38,7 +55,9 @@ class FrequencyRule(RuleType):
                 )
                 self.occurrences.setdefault(
                     bucket["key"],
-                    EventWindow(self.rules["timeframe"], getTimestamp=self.get_ts),
+                    CountEventWindow(
+                        self.rules["timeframe"], get_timestamp=self.get_ts
+                    ),
                 ).append(event)
                 self.check_for_match(bucket["key"])
 
@@ -57,7 +76,8 @@ class FrequencyRule(RuleType):
 
             # Store the timestamps of recent occurrences, per key
             self.occurrences.setdefault(
-                key, EventWindow(self.rules["timeframe"], getTimestamp=self.get_ts)
+                key,
+                CountEventWindow(self.rules["timeframe"], get_timestamp=self.get_ts),
             ).append((event, 1))
             self.check_for_match(key, end=False)
 

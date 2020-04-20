@@ -61,7 +61,6 @@ class Alerter(metaclass=ABCMeta):
 
         :param match: A dictionary of relevant information to the alert.
         """
-        pass
 
     def get_info(self):
         """ Returns a dictionary of data related to this alert. At minimum, this should contain

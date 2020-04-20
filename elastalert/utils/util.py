@@ -6,14 +6,23 @@ import re
 import sys
 
 import pytz
-from elastalert import ElasticSearchClient
-from elastalert.auth import Auth
-from elastalert.exceptions import EAException
-from elastalert.utils.time import total_seconds, ts_now
+from elastalert import config
+from elastalert.clients import ElasticSearchClient
+from elastalert.exceptions import EAException, EARuntimeException
+from elastalert.utils.time import (
+    dt_to_unix,
+    total_seconds,
+    ts_now,
+    ts_to_dt,
+    unix_to_dt,
+)
+from elasticsearch import ElasticsearchException
 from six import string_types
 
+log = logging.getLogger(__name__)
 
-def get_module(module_name):
+
+def get_module(module_name: str):
     """ Loads a module and returns a specific object.
     module_name should 'module.file.object'.
     Returns object or raises EAException on error. """
@@ -75,6 +84,7 @@ def _find_es_dict_by_key(lookup_dict, term):
     #  {'foo.bar': {'bar': 'ray'}} to look up foo.bar will return {'bar': 'ray'}, not 'ray'
     dict_cursor = lookup_dict
 
+    subkey = ""
     while term:
         split_results = re.split(r"\[(\d)\]", term, maxsplit=1)
         if len(split_results) == 3:
@@ -84,8 +94,6 @@ def _find_es_dict_by_key(lookup_dict, term):
             sub_term, index, term = split_results + [None, ""]
 
         subkeys = sub_term.split(".")
-
-        subkey = ""
 
         while len(subkeys) > 0:
             if not dict_cursor:
@@ -158,8 +166,8 @@ def format_index(index, start, end, add_extra=False):
     while start.date() <= end.date():
         indices.add(start.strftime(index))
         start += datetime.timedelta(days=1)
-    num = len(indices)
     if add_extra:
+        num = len(indices)
         while len(indices) == num:
             original_start -= datetime.timedelta(days=1)
             new_index = original_start.strftime(index)
@@ -172,21 +180,8 @@ def format_index(index, start, end, add_extra=False):
     return ",".join(indices)
 
 
-def cronite_datetime_to_timestamp(self, d):
-    """
-    Converts a `datetime` object `d` into a UNIX timestamp.
-    """
-    if d.tzinfo is not None:
-        d = d.replace(tzinfo=None) - d.utcoffset()
-
-    return total_seconds((d - datetime.datetime(1970, 1, 1)))
-
-
 def add_raw_postfix(field, is_five_or_above):
-    if is_five_or_above:
-        end = ".keyword"
-    else:
-        end = ".raw"
+    end = ".keyword" if is_five_or_above else ".raw"
     if not field.endswith(end):
         field += end
     return field
@@ -204,80 +199,9 @@ def replace_dots_in_field_names(document):
     return document
 
 
-def elasticsearch_client(conf):
+def elasticsearch_client(conf: config.ESClient) -> ElasticSearchClient:
     """ returns an :class:`ElasticSearchClient` instance configured using an es_conn_config """
-    es_conn_conf = build_es_conn_config(conf)
-    auth = Auth()
-    es_conn_conf["http_auth"] = auth(
-        host=es_conn_conf["es_host"],
-        username=es_conn_conf["es_username"],
-        password=es_conn_conf["es_password"],
-        aws_region=es_conn_conf["aws_region"],
-        profile_name=es_conn_conf["profile"],
-    )
-
-    return ElasticSearchClient(es_conn_conf)
-
-
-def build_es_conn_config(conf):
-    """ Given a conf dictionary w/ raw config properties 'use_ssl', 'es_host', 'es_port'
-    'es_username' and 'es_password', this will return a new dictionary
-    with properly initialized values for 'es_host', 'es_port', 'use_ssl' and 'http_auth' which
-    will be a basicauth username:password formatted string """
-    parsed_conf = {}
-    parsed_conf["use_ssl"] = os.environ.get("ES_USE_SSL", False)
-    parsed_conf["verify_certs"] = True
-    parsed_conf["ca_certs"] = None
-    parsed_conf["client_cert"] = None
-    parsed_conf["client_key"] = None
-    parsed_conf["http_auth"] = None
-    parsed_conf["es_username"] = None
-    parsed_conf["es_password"] = None
-    parsed_conf["aws_region"] = None
-    parsed_conf["profile"] = None
-    parsed_conf["es_host"] = os.environ.get("ES_HOST", conf["es_host"])
-    parsed_conf["es_port"] = int(os.environ.get("ES_PORT", conf["es_port"]))
-    parsed_conf["es_url_prefix"] = ""
-    parsed_conf["es_conn_timeout"] = conf.get("es_conn_timeout", 20)
-    parsed_conf["send_get_body_as"] = conf.get("es_send_get_body_as", "GET")
-
-    if os.environ.get("ES_USERNAME"):
-        parsed_conf["es_username"] = os.environ.get("ES_USERNAME")
-        parsed_conf["es_password"] = os.environ.get("ES_PASSWORD")
-    elif "es_username" in conf:
-        parsed_conf["es_username"] = conf["es_username"]
-        parsed_conf["es_password"] = conf["es_password"]
-
-    if "aws_region" in conf:
-        parsed_conf["aws_region"] = conf["aws_region"]
-
-    # Deprecated
-    if "boto_profile" in conf:
-        logging.warning('Found deprecated "boto_profile", use "profile" instead!')
-        parsed_conf["profile"] = conf["boto_profile"]
-
-    if "profile" in conf:
-        parsed_conf["profile"] = conf["profile"]
-
-    if "use_ssl" in conf:
-        parsed_conf["use_ssl"] = conf["use_ssl"]
-
-    if "verify_certs" in conf:
-        parsed_conf["verify_certs"] = conf["verify_certs"]
-
-    if "ca_certs" in conf:
-        parsed_conf["ca_certs"] = conf["ca_certs"]
-
-    if "client_cert" in conf:
-        parsed_conf["client_cert"] = conf["client_cert"]
-
-    if "client_key" in conf:
-        parsed_conf["client_key"] = conf["client_key"]
-
-    if "es_url_prefix" in conf:
-        parsed_conf["es_url_prefix"] = conf["es_url_prefix"]
-
-    return parsed_conf
+    return ElasticSearchClient(conf)
 
 
 def pytzfy(dt):
@@ -352,3 +276,126 @@ def should_scrolling_continue(rule_conf):
     stop_the_scroll = 0 < max_scrolling <= rule_conf.get("scrolling_cycle")
 
     return not stop_the_scroll
+
+
+def get_starttime(rule_config: dict) -> datetime:
+    """ Query ES for the last time we ran this rule.
+
+    :param rule_config: The rule configuration.
+    :return: A timestamp or None.
+    """
+    query = {
+        "query": {"bool": {"filter": {"term": {"rule_name": rule_config["name"]}}}},
+        "sort": {"@timestamp": {"order": "desc"}},
+    }
+
+    try:
+        writeback_es = elasticsearch_client(
+            config.CFG().es_client
+        )  # TODO this should use the es config from the rule
+        doc_type = "elastalert_status"
+        index = writeback_es.resolve_writeback_index(
+            config.CFG().writeback_index, doc_type
+        )
+        res = writeback_es.search(
+            index=index, size=1, body=query, _source_includes=["endtime", "rule_name"]
+        )
+        if res["hits"]["hits"]:
+            endtime = ts_to_dt(res["hits"]["hits"][0]["_source"]["endtime"])
+
+            if ts_now() - endtime < config.CFG().old_query_limit:
+                return endtime
+            else:
+                log.info(
+                    "Found expired previous run for %s at %s"
+                    % (rule_config["name"], endtime)
+                )
+                return None
+    except (ElasticsearchException, KeyError) as e:
+        raise EARuntimeException(
+            "Error querying for last run: %s" % e,
+            rule=rule_config["name"],
+            original_exception=e,
+        )
+
+
+def get_index_start(index: str, timestamp_field: str = "@timestamp") -> str:
+    """ Query for one result sorted by timestamp to find the beginning of the index.
+
+    :param index: The index of which to find the earliest event.
+    :param timestamp_field: The name of the timestamp field
+    :return: Timestamp of the earliest event.
+    """
+    query = {"sort": {timestamp_field: {"order": "asc"}}}
+    try:
+        es = elasticsearch_client(config.CFG().es_client)
+        res = es.search(
+            index=index,
+            size=1,
+            body=query,
+            _source_includes=[timestamp_field],
+            ignore_unavailable=True,
+        )
+    except ElasticsearchException as e:
+        raise EARuntimeException(
+            "Elasticsearch query error: %s" % e, query=query, original_exception=e
+        )
+    if len(res["hits"]["hits"]) == 0:
+        # Index is completely empty, return a date before the epoch
+        return "1969-12-30T00:00:00Z"
+    return res["hits"]["hits"][0][timestamp_field]
+
+
+def get_index(rule, starttime=None, endtime=None):
+    """ Gets the index for a rule. If strftime is set and starttime and endtime
+    are provided, it will return a comma seperated list of indices. If strftime
+    is set but starttime and endtime are not provided, it will replace all format
+    tokens with a wildcard. """
+    index = rule["index"]
+    add_extra = rule.get("search_extra_index", False)
+    if rule.get("use_strftime_index"):
+        if starttime and endtime:
+            return format_index(index, starttime, endtime, add_extra)
+        else:
+            # Replace the substring containing format characters with a *
+            format_start = index.find("%")
+            format_end = index.rfind("%") + 2
+            return index[:format_start] + "*" + index[format_end:]
+    else:
+        return index
+
+
+def enhance_filter(rule):
+    """ If there is a blacklist or whitelist in rule then we add it to the filter.
+    It adds it as a query_string. If there is already an query string its is appended
+    with blacklist or whitelist.
+
+    :param rule:
+    :return:
+    """
+    if not rule.get("filter_by_list", True):
+        return
+    if "blacklist" in rule:
+        listname = "blacklist"
+    elif "whitelist" in rule:
+        listname = "whitelist"
+    else:
+        return
+
+    filters = rule["filter"]
+    additional_terms = []
+    for term in rule[listname]:
+        if not (term.startswith("/") and term.endswith("/")):
+            additional_terms.append(rule["compare_key"] + ':"' + term + '"')
+        else:
+            # These are regular expressions and won't work if they are quoted
+            additional_terms.append(rule["compare_key"] + ":" + term)
+    if listname == "whitelist":
+        query = "NOT " + " AND NOT ".join(additional_terms)
+    else:
+        query = " OR ".join(additional_terms)
+    query_str_filter = {"query_string": {"query": query}}
+    filters.append(query_str_filter)
+    log.debug(
+        "Enhanced filter with {} terms: {}".format(listname, str(query_str_filter))
+    )

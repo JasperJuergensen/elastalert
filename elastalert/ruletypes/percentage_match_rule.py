@@ -5,8 +5,8 @@ from elastalert.ruletypes.base_aggregation_rule import BaseAggregationRule
 class PercentageMatchRule(BaseAggregationRule):
     required_options = frozenset(["match_bucket_filter"])
 
-    def __init__(self, *args):
-        super(PercentageMatchRule, self).__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super(PercentageMatchRule, self).__init__(*args, **kwargs)
         self.ts_field = self.rules.get("timestamp_field", "@timestamp")
         if "max_percentage" not in self.rules and "min_percentage" not in self.rules:
             raise EAException(
@@ -19,18 +19,14 @@ class PercentageMatchRule(BaseAggregationRule):
 
     def get_match_str(self, match):
         percentage_format_string = self.rules.get("percentage_format_string", None)
-        message = (
-            "Percentage violation, value: %s (min: %s max : %s) of %s items\n\n"
-            % (
-                percentage_format_string % (match["percentage"])
-                if percentage_format_string
-                else match["percentage"],
-                self.rules.get("min_percentage"),
-                self.rules.get("max_percentage"),
-                match["denominator"],
-            )
+        return "Percentage violation, value: %s (min: %s max : %s) of %s items\n\n" % (
+            percentage_format_string % (match["percentage"])
+            if percentage_format_string
+            else match["percentage"],
+            self.rules.get("min_percentage"),
+            self.rules.get("max_percentage"),
+            match["denominator"],
         )
-        return message
 
     def generate_aggregation_query(self):
         return {
@@ -78,9 +74,7 @@ class PercentageMatchRule(BaseAggregationRule):
             and match_percentage > self.rules["max_percentage"]
         ):
             return True
-        if (
+        return (
             "min_percentage" in self.rules
             and match_percentage < self.rules["min_percentage"]
-        ):
-            return True
-        return False
+        )

@@ -7,12 +7,10 @@ class BlacklistRule(CompareRule):
 
     required_options = frozenset(["compare_key", "blacklist"])
 
-    def __init__(self, rules, args=None):
-        super(BlacklistRule, self).__init__(rules, args=None)
+    def __init__(self, rules, args=None, es=None):
+        super(BlacklistRule, self).__init__(rules, args, es)
         self.expand_entries("blacklist")
 
     def compare(self, event):
         term = lookup_es_key(event, self.rules["compare_key"])
-        if term in self.rules["blacklist"]:
-            return True
-        return False
+        return term in self.rules["blacklist"]

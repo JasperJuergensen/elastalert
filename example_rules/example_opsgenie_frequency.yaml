@@ -24,7 +24,7 @@ opsgenie_key: ogkey
 # (Optional)
 # OpsGenie recipients with args
 # opsgenie_recipients:
-#   - {recipient} 
+#   - {recipient}
 # opsgenie_recipients_args:
 #     team_prefix:'user.email'
 
@@ -36,7 +36,7 @@ opsgenie_key: ogkey
 # (Optional)
 # OpsGenie teams with args
 # opsgenie_teams:
-#   - {team_prefix}-Team 
+#   - {team_prefix}-Team
 # opsgenie_teams_args:
 #     team_prefix:'team'
 
@@ -81,9 +81,8 @@ timeframe:
 # These filters are joined with AND and nested in a filtered query
 # For more info: http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl.html
 filter:
-- query:
-    query_string:
-      query: "@message: *hihi*"
+- query_string:
+    query: "@message: *hihi*"
 
 # (Required)
 # The alert is use when a match is found

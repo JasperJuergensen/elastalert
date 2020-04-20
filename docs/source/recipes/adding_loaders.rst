@@ -82,4 +82,3 @@ Finally, you need to specify in your ElastAlert configuration file that MongoRul
 default FileRulesLoader, so in your ``elastalert.conf`` file::
 
     rules_loader: "elastalert_modules.mongo_loader.MongoRulesLoader"
-

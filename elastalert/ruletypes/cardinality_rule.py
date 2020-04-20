@@ -1,4 +1,6 @@
 from elastalert.exceptions import EAException
+from elastalert.queries.elasticsearch_query import ElasticsearchQuery
+from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils.time import dt_to_ts, pretty_ts, ts_to_dt
 from elastalert.utils.util import hashable, lookup_es_key
@@ -8,6 +10,11 @@ class CardinalityRule(RuleType):
     """ A rule that matches if cardinality of a field is above or below a threshold within a timeframe """
 
     required_options = frozenset(["timeframe", "cardinality_field"])
+
+    def init_query_factory(self):
+        return QueryFactory(
+            ElasticsearchQuery, self.rule_config, self.add_data, self.es
+        )
 
     def __init__(self, *args):
         super(CardinalityRule, self).__init__(*args)

@@ -1,10 +1,14 @@
 import copy
 from abc import ABCMeta
+from datetime import datetime
+from typing import Dict, List
 
+from deprecated import deprecated
+from elastalert.rule import Rule
 from elastalert.utils.time import dt_to_ts
 
 
-class RuleType(metaclass=ABCMeta):
+class RuleType(Rule, metaclass=ABCMeta):
     """ The base class for a rule type.
     The class must implement add_data and add any matches to self.matches.
 
@@ -13,16 +17,17 @@ class RuleType(metaclass=ABCMeta):
 
     required_options = frozenset()
 
-    def __init__(self, rules, args=None):
-        self.matches = []
-        self.rules = rules
+    def __init__(self, rule_config, *args, **kwargs):
+        super().__init__(rule_config, *args, **kwargs)
+        self.rules = self.rule_config
         self.occurrences = {}
         self.rules["category"] = self.rules.get("category", "")
         self.rules["description"] = self.rules.get("description", "")
         self.rules["owner"] = self.rules.get("owner", "")
         self.rules["priority"] = self.rules.get("priority", "2")
 
-    def add_data(self, data):
+    @deprecated
+    def add_data(self, data: List[dict]):
         """ The function that the ElastAlert client calls with results from ES.
         Data is a list of dictionaries, from Elasticsearch.
 
@@ -53,27 +58,22 @@ class RuleType(metaclass=ABCMeta):
         """
         return ""
 
-    def garbage_collect(self, timestamp):
-        """ Gets called periodically to remove old data that is useless beyond given timestamp.
-        May also be used to compute things in the absence of new data.
-
-        :param timestamp: A timestamp indicating the rule has been run up to that point.
-        """
-        pass
-
-    def add_count_data(self, counts):
+    @deprecated
+    def add_count_data(self, counts: Dict[datetime, int]):
         """ Gets called when a rule has use_count_query set to True. Called to add data from querying to the rule.
 
         :param counts: A dictionary mapping timestamps to hit counts.
         """
         raise NotImplementedError()
 
-    def add_terms_data(self, terms):
+    @deprecated
+    def add_terms_data(self, terms: Dict[datetime, List[dict]]):
         """ Gets called when a rule has use_terms_query set to True.
 
         :param terms: A list of buckets with a key, corresponding to query_key, and the count """
         raise NotImplementedError()
 
+    @deprecated
     def add_aggregation_data(self, payload):
         """ Gets called when a rule has use_terms_query set to True.
         :param terms: A list of buckets with a key, corresponding to query_key, and the count """

@@ -10,7 +10,7 @@ import string
 import sys
 
 import mock
-from elastalert.config import load_conf
+from elastalert.config import load_config
 from elastalert.elastalert import ElastAlerter
 from elastalert.utils.time import ts_to_dt
 from elastalert.utils.util import (
@@ -483,7 +483,7 @@ class MockElastAlerter(object):
         args.es_debug = False
         args.es_debug_trace = False
 
-        conf = load_conf(args, defaults, overwrites)
+        conf = load_config(args, defaults, overwrites)
         rule_yaml = conf["rules_loader"].load_yaml(args.file)
         conf["rules_loader"].load_options(rule_yaml, conf, args.file)
 

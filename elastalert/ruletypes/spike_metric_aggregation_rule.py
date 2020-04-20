@@ -4,6 +4,7 @@ from elastalert.ruletypes.spike_rule import SpikeRule
 from elastalert.utils.time import pretty_ts
 
 
+# TODO there is probably a problem with multiple inheritance
 class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
     """ A rule that matches when there is a spike in an aggregated event compared to its reference point """
 
@@ -14,9 +15,9 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
         ["min", "max", "avg", "sum", "cardinality", "value_count"]
     )
 
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
         # We inherit everything from BaseAggregation and Spike, overwrite only what we need in functions below
-        super(SpikeMetricAggregationRule, self).__init__(*args)
+        super(SpikeMetricAggregationRule, self).__init__(*args, **kwargs)
 
         # MetricAgg alert things
         self.metric_key = (
@@ -25,7 +26,7 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
             + "_"
             + self.rules["metric_agg_type"]
         )
-        if not self.rules["metric_agg_type"] in self.allowed_aggregations:
+        if self.rules["metric_agg_type"] not in self.allowed_aggregations:
             raise EAException(
                 "metric_agg_type must be one of %s" % (str(self.allowed_aggregations))
             )
@@ -112,3 +113,6 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
             self.rules["timeframe"],
         )
         return message
+
+    def check_matches(self, timestamp, query_key, aggregation_data):
+        raise NotImplementedError

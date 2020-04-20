@@ -25,7 +25,7 @@ A special exception class ```DropMatchException``` can be used in enhancements t
 Example
 -------
 
-As an example enhancement, let's add a link to a whois website. The match must contain a field named domain and it will 
+As an example enhancement, let's add a link to a whois website. The match must contain a field named domain and it will
 add an entry named domain_whois_link. First, create a modules folder for the enhancement in the ElastAlert directory.
 
 .. code-block:: console
@@ -56,4 +56,3 @@ by setting the ``match_enhancements`` option::
 
     match_enhancements:
     - "elastalert_modules.my_enhancements.MyEnhancement"
-
