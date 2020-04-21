@@ -955,6 +955,8 @@ A table with arguments for different metrics is below.
     | Metric              | Options                                                        |
     +=====================+================================================================+
     | percentile          | ``percentile`` (float between 0 and 1, default: 0.95) optional |
+    |                     | ``params`` These parameters (a,b,c,d) are used to calculate    |
+    |                     |     the percentile. See below for more info.                   |
     +---------------------+----------------------------------------------------------------+
     | mean                |                                                                |
     +---------------------+----------------------------------------------------------------+
@@ -964,7 +966,8 @@ A table with arguments for different metrics is below.
     +---------------------+----------------------------------------------------------------+
     | mad                 |                                                                |
     +---------------------+----------------------------------------------------------------+
-    | interquartile_range |                                                                |
+    | interquartile_range | ``params`` These parameters (a,b,c,d) are used to calculate    |
+    |                     | the quartiles. See percentile parameters below for more info.  |
     +---------------------+----------------------------------------------------------------+
     | sum                 |                                                                |
     +---------------------+----------------------------------------------------------------+
@@ -974,6 +977,23 @@ A table with arguments for different metrics is below.
     +---------------------+----------------------------------------------------------------+
     | fixed               |                                                                |
     +---------------------+----------------------------------------------------------------+
+
+..note:: Percentile parameters ``a, b, c, d``: These parameters are used to calculated the percentile.
+    For a sorted list ``s`` of length ``n`` the calculation is as follows:
+    The first internal parameter is ``x = a + (n + b) * q`` . If ``x`` is an integer the result is s[x]. Otherwise the result
+    is ``s[floor(x)] + (s[ceil(x)] - s[floor(x)]) * (c + d * fractional_part(x))``.
+    The default choice for a, b, c, d = (0, 0, 1, 0). Common choices of parameter include:
+    (0,   0,   1, 0)        inverse empirical CDF (default)
+    (0,   0,   0, 1)        linear interpolation (California method)
+    (1/2, 0,   0, 0)        element numbered closest to q * n
+    (1/2, 0,   0, 1)        linear interpolation (hydrologist method)
+    (0,   1,   0, 1)        mean-based estimate (Weibull method)
+    (1,   -1,  0, 1)        mode-based estimate
+    (1/3, 1/3, 0, 1)        median-based estimate
+    (3/8, 1/4, 0, 1)        normal distribution estimate
+    Whenever ``d = 0`` the result is always equal to an element in the list.
+    For the median (1/2, 0, 0, 1) is used.
+    The default for the quartiles in the interquartile_range are the default parameters.
 
 ``threshold_ref``: The minimum reference metric value for an alert to trigger. For example, if
 ``spike_height: 3`` and ``threshold_ref: 10``, then the reference metric value must be at least 10 and the current value at

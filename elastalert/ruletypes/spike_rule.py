@@ -10,7 +10,9 @@ from elastalert.queries.elasticsearch_query import (
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils import arithmetic
+from elastalert.utils.arithmetic import mean
 from elastalert.utils.event_window import CountEventWindow
+from elastalert.utils.time import pretty_ts
 from elastalert.utils.util import hashable, lookup_es_key, new_get_event_ts
 
 
@@ -27,22 +29,20 @@ class SpikeRule(RuleType):
         )
 
         self.ref_window_count = self.rule_config.get("ref_window_count", 1)
-        if self.ref_window_count < 1:
-            raise EAConfigException("ref_count must be >= 1")
-        self.spike_height_metric = arithmetic.mapping.get(
-            self.rule_config.get("spike_height_metric", "fixed"), lambda x: 1
-        )
-        self.spike_height_metric_args = self.rule_config.get(
-            "spike_height_metric_args", dict()
-        )
         self.spike_ref_metric = arithmetic.mapping[
             self.rule_config.get("spike_ref_metric", "mean")
         ]
         self.spike_ref_metric_args = self.rule_config.get(
             "spike_ref_metric_args", dict()
         )
+        self.spike_height_metric = arithmetic.mapping.get(
+            self.rule_config.get("spike_height_metric", "fixed"), lambda ref: 1
+        )
+        self.spike_height_metric_args = self.rule_config.get(
+            "spike_height_metric_args", dict()
+        )
         if (
-            self.rule_config.get("spike_ref_metric", "fixed") != "fixed"
+            self.rule_config.get("spike_height_metric", "fixed") != "fixed"
             and self.ref_window_count == 1
         ):
             raise EAConfigException(
@@ -51,6 +51,7 @@ class SpikeRule(RuleType):
 
         self.windows = dict()
         self.first_event = dict()
+        self.skip_checks = dict()
 
     def init_query_factory(self) -> QueryFactory:
         if self.rule_config.get("use_count_query"):
@@ -107,6 +108,17 @@ class SpikeRule(RuleType):
             )
         )
 
+    def clear_windows(self, qk: str, event: dict):
+        # Reset the state and prevent alerts until windows filled again
+        for window in self.windows[qk][:-2]:
+            window.clear()
+        self.first_event.pop(qk)
+        self.skip_checks[qk] = (
+            lookup_es_key(event, self.ts_field)
+            + (self.timeframe * (self.ref_window_count + 1))
+            + self.gap_timeframe
+        )
+
     def handle_event(self, event: dict, count: int, qk: str = "all"):
         self.first_event.setdefault(qk, event)
         if qk not in self.windows:
@@ -114,22 +126,28 @@ class SpikeRule(RuleType):
         self.windows[qk][-1].append((event, count))
         # Don't alert if ref window has not yet been filled for this key AND
         if (
-            not self.rule_config.get("alert_on_new_data", False)
-            and lookup_es_key(event, self.ts_field)
-            - self.first_event[qk][self.ts_field]
+            lookup_es_key(event, self.ts_field) - self.first_event[qk][self.ts_field]
             < (self.timeframe * (self.ref_window_count + 1)) + self.gap_timeframe
         ):
             # ElastAlert has not been running long enough for any alerts OR
             if not self.ref_window_filled_once:
                 return
-            # This rule is not using alert_on_new_data (with query_key)
+            # This rule is not using alert_on_new_data (with query_key) OR
             if not (
                 self.rules.get("query_key") and self.rules.get("alert_on_new_data")
             ):
                 return
+            # An alert for this qk has recently fired
+            if (
+                qk in self.skip_checks
+                and lookup_es_key(event, self.ts_field) < self.skip_checks[qk]
+            ):
+                return
         else:
             self.ref_window_filled_once = True
+        self.find_matches(qk)
 
+    def find_matches(self, qk: str):
         cur = self.windows[qk][-1].count()
         ref_data = [
             self.windows[qk][i].count() for i in range(len(self.windows[qk]) - 2)
@@ -140,26 +158,41 @@ class SpikeRule(RuleType):
             "threshold_ref", 0
         ):
             return
-        spike_up, spike_down = False, False
-        if cur >= ref * ref_metric * self.rule_config["spike_height"]:
-            spike_up = True
-        if cur <= ref / (ref_metric * self.rule_config["spike_height"]):
-            spike_down = True
+        if self.rule_config.get("spike_height_metric", "fixed") == "fixed":
+            up_ref_value = ref * self.rule_config["spike_height"]
+            down_ref_value = ref / self.rule_config["spike_height"]
+        else:
+            up_ref_value = ref + ref_metric * self.rule_config["spike_height"]
+            down_ref_value = ref - (ref_metric * self.rule_config["spike_height"])
 
-        if (self.rules["spike_type"] in ["both", "up"] and spike_up) or (
-            self.rules["spike_type"] in ["both", "down"] and spike_down
+        if (
+            self.rule_config["spike_type"] in ["both", "up"] and cur >= up_ref_value
+        ) or (
+            self.rule_config["spike_type"] in ["both", "down"] and cur <= down_ref_value
         ):
             extra_info = {
                 "spike_count": cur,
                 "reference_count": ref,
                 "reference_metric_value": ref_metric,
             }
-            event = {"events": [item[0] for item in self.windows[qk][-1].data]}
-            match = dict(list(event.items()) + list(extra_info.items()))
+            match = dict(
+                list(self.windows[qk][-1].data[0][0].items()) + list(extra_info.items())
+            )
             self.add_match(match)
+            self.clear_windows(qk, match)
 
     def get_match_str(self, match):
-        return ""  # TODO
+        message = "An abnormal number (%d) of events occurred around %s.\n" % (
+            match["spike_count"],
+            pretty_ts(
+                match[self.rules["timestamp_field"]], self.rules.get("use_local_time")
+            ),
+        )
+        message += "Preceding that time, there were only %d events within %s\n\n" % (
+            match["reference_count"],
+            self.rules["timeframe"],
+        )
+        return message
 
     def add_data(self, data: List[dict]):
         for event in data:
@@ -171,8 +204,8 @@ class SpikeRule(RuleType):
             self.handle_event(event, 1, qk)
 
     def add_count_data(self, counts: Dict[datetime.datetime, int]):
-        ts, count = counts.items()
-        self.handle_event({self.ts_field: ts}, count)
+        for ts, count in counts.items():
+            self.handle_event({self.ts_field: ts}, count)
 
     def add_terms_data(self, terms: Dict[datetime.datetime, List[dict]]):
         for timestamp, buckets in terms.items():

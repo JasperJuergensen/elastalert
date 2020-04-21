@@ -537,7 +537,7 @@ class RuleTest(unittest.TestCase):
         rule.add_data(
             [{"@timestamp": ts_to_dt("2015"), "foo": {"bar": {"baz": "LOL"}}}]
         )
-        assert "LOL" in rule.cur_windows
+        assert "LOL" in rule.windows
 
     def test_spike(self):
         # Events are 1 per second
@@ -779,6 +779,206 @@ class RuleTest(unittest.TestCase):
 
         rule.add_terms_data(terms8)
         assert len(rule.matches) == 0
+
+    def test_spike_gap_timeframe(self):
+        rules = {
+            "spike_height": 2,
+            "gap_timeframe": datetime.timedelta(seconds=30),
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "up",
+            "timestamp_field": "@timestamp",
+        }
+        rule = SpikeRule(rules)
+
+        # Double rate of events at 50 (10 + 30 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:50"): 20})
+        assert len(rule.matches) == 1
+
+    def test_spike_ref_buckets(self):
+        rules = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "ref_window_count": 3,
+            "spike_type": "both",
+            "timestamp_field": "@timestamp",
+        }
+
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 40})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 10})
+        assert len(rule.matches) == 1
+
+        rules["spike_ref_metric"] = "median"
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 40})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 10})
+        assert len(rule.matches) == 1
+
+        rules["spike_ref_metric"] = "min"
+        rule = SpikeRule(rules)
+        # Double rate of events to min ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 20})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to min ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 5})
+
+        rules["spike_ref_metric"] = "max"
+        rule = SpikeRule(rules)
+        # Double rate of events to max ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 60})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to max ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 15})
+        assert len(rule.matches) == 1
+
+    def test_spike_ref_buckets_variable_height(self):
+        rules = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "ref_window_count": 3,
+            "spike_ref_metric": "mean",
+            "spike_height_metric": "variance",
+            "spike_type": "both",
+            "timestamp_field": "@timestamp",
+        }
+
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 26})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 0})
+        assert len(rule.matches) == 1
+
+        rules["spike_ref_metric"] = "percentile"
+        rules["spike_ref_metric_args"] = {"percentile": 0.99, "params": (0, 0, 0, 1)}
+        rules["spike_height_metric"] = "interquartile_range"
+        rules["spike_height_metric_args"] = {"params": (0, 0, 0, 1)}
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 22})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 7})
+        assert len(rule.matches) == 1
 
     def test_blacklist(self):
         events = [
