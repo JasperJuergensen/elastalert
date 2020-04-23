@@ -235,7 +235,7 @@ def ea():
         def load(self, args):
             return rules
 
-        def get_hashes(self, rule):
+        def get_hashes(self, args):
             return {}
 
         def load_rule(self, str: str):

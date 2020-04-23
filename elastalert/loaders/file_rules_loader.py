@@ -3,7 +3,6 @@ import os
 from typing import Dict, List
 
 import staticconf.loader
-from elastalert.config import Config
 from elastalert.exceptions import EAException
 from elastalert.loaders import RulesLoader
 from yaml import scanner
@@ -14,17 +13,13 @@ class FileRulesLoader(RulesLoader):
     # Required global (config.yaml) configuration options for the loader
     required_globals = frozenset(["rules_folder"])
 
-    def get_rule_configs(self) -> Dict[str, dict]:
-        rule_files = self.get_names(self.base_config)
-        return {filename: self.load_rule(filename) for filename in rule_files}
-
-    def get_names(self, conf: Config, use_rule: str = None) -> List[str]:
+    def get_names(self, use_rule: str = None) -> List[str]:
         # Passing a filename directly can bypass rules_folder and .yaml checks
         if use_rule and os.path.isfile(use_rule):
             return [use_rule]
-        rule_folder = conf.rules_folder
+        rule_folder = self.base_config.rules_folder
         rule_files = []
-        if conf.scan_subdirectories:
+        if self.base_config.scan_subdirectories:
             for root, folders, files in os.walk(rule_folder):
                 for filename in files:
                     if use_rule and use_rule != filename:
@@ -38,8 +33,8 @@ class FileRulesLoader(RulesLoader):
                     rule_files.append(fullpath)
         return rule_files
 
-    def get_hashes(self, use_rule: str = None) -> Dict[str, str]:
-        rule_files = self.get_names(self.base_config, use_rule)
+    def get_hashes(self, use_rule: str = None) -> Dict[str, int]:
+        rule_files = self.get_names(use_rule)
         return {
             rule_file: self.get_rule_file_hash(rule_file) for rule_file in rule_files
         }
@@ -70,21 +65,26 @@ class FileRulesLoader(RulesLoader):
                 os.path.dirname(rule_config["rule_file"]), rule_config["import"]
             )
 
-    def get_rule_file_hash(self, rule_file: str) -> str:
+    def get_rule_file_hash(self, rule_file: str) -> int:
         """
         Creates a hash over a rule file
 
         :param rule_file: The rule
         :return: sha1 hash digest
         """
-        rule_file_hash = ""
+        rule_file_hash = 0
         if os.path.exists(rule_file):
             with open(rule_file, "rb") as fh:
-                rule_file_hash = hashlib.sha1(fh.read()).digest()
+                rule_file_hash = int.from_bytes(hashlib.sha1(fh.read()).digest(), "big")
             for import_rule_file in self.import_rules.get(rule_file, []):
-                rule_file_hash = hashlib.sha1(
-                    rule_file_hash + self.get_rule_file_hash(import_rule_file)
-                ).digest()
+                rule_file_hash = int.from_bytes(
+                    hashlib.sha1(
+                        (
+                            rule_file_hash + self.get_rule_file_hash(import_rule_file)
+                        ).to_bytes(22, "big")
+                    ).digest(),
+                    "big",
+                )
         return rule_file_hash
 
     @staticmethod
