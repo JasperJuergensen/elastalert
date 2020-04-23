@@ -39,7 +39,8 @@ class Parser(object):
         parser.add_argument(
             "--rule",
             dest="rule",
-            help="Run only a specific rule (by filename, must still be in rules folder)",
+            help="Run only a specific rule "
+            "(by filename, must still be in rules folder)",
         )
         parser.add_argument(
             "--silence",
@@ -90,7 +91,8 @@ class Parser(object):
             "--es_debug_trace",
             action="store",
             dest="es_debug_trace",
-            help="Enable logging from Elasticsearch queries as curl command. Queries will be logged to file. Note that "
+            help="Enable logging from Elasticsearch queries as curl command."
+            "Queries will be logged to file. Note that "
             "this will incorrectly display localhost:9200 as the host/port",
         )
         return parser.parse_args(args)
@@ -122,7 +124,7 @@ class MailSettings(object):
     email_reply_to: str = None
 
 
-def default_alert_text():
+def default_alert_text_args():
     return [
         "_index",
         "@timestamp",
@@ -132,6 +134,14 @@ def default_alert_text():
         "log_name",
         "z_original_message",
     ]
+
+
+default_alert_text = (
+    "Index: {0} \nEvent_Timestamp: {1} \nBeat_Name: {2} "
+    "\nUser_Name: {3} "
+    "\nHost_Name: {4} "
+    "\nLog_Name: {5} \nOriginal_Message: \n\n{6} "
+)
 
 
 @dataclass(frozen=True)
@@ -146,9 +156,9 @@ class Config(object):
     old_query_limit: datetime.timedelta = None
     args: argparse.Namespace = None
     mail_settings: MailSettings = None
-    alert_text: str = "Index: {0} \nEvent_Timestamp: {1} \nBeat_Name: {2} \nUser_Name: {3} \nHost_Name: {4} " "\nLog_Name: {5} \nOriginal_Message: \n\n{6} "
+    alert_text: str = default_alert_text
     alert_text_type: str = "alert_text_only"
-    alert_text_args: list = field(default_factory=default_alert_text)
+    alert_text_args: list = field(default_factory=default_alert_text_args)
     replace_dots_in_field_names: bool = False
     string_multi_field_name: bool = False
     add_metadata_alert: bool = False
@@ -177,6 +187,8 @@ class Config(object):
             conf = staticconf.loader.yaml_loader(filename)
         except FileNotFoundError:
             raise EAConfigException("Config file '{}' not found".format(filename))
+
+        conf["args"] = args
 
         # Settings that can be derived from ENV variables
         env_settings = {
@@ -251,7 +263,8 @@ def configure_logging(args, config: Config) -> None:
 
     if args.debug:
         log.info(
-            "Note: In debug mode, alerts will be logged to console but NOT actually sent. To send them but remain "
+            "Note: In debug mode, alerts will be logged to console but "
+            "NOT actually sent. To send them but remain "
             "verbose, use --verbose instead. "
         )
         logging.getLogger("elastalert").setLevel(logging.DEBUG)
