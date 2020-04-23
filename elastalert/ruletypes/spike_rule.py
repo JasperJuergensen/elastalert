@@ -76,9 +76,10 @@ class SpikeRule(RuleType):
                     continue
             for window in self.windows[qk]:
                 # adds a dummy event so that the duration is until now and clears old events
-                window.data.add({self.ts_field: timestamp})
-                window.clean_old_events()
-                del window.data[-1]
+                if window.timeframe > datetime.timedelta(seconds=0):
+                    window.data.add(({self.ts_field: timestamp}, 0))
+                    window.clean_old_events()
+                    del window.data[-1]
 
     def init_windows(self, qk: str):
         """

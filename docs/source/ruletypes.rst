@@ -1100,6 +1100,10 @@ default 50, unique terms.
 
 ``query_key``: Counts of documents will be stored independently for each value of ``query_key``.
 
+``scan_entire_timeframe``: If this value is set, not only the `'buffer_time`` (or in case of ``use_count_query`` or ``use_terms_query``
+the ``run_every`` time) is queried every run but the whole ``timeframe``. With count or terms queries this can lead to wrong data
+because some of the data queried may have been queried in the previous run and due to missing ids it can't be deduplicated.
+
 Flatline
 ~~~~~~~~
 

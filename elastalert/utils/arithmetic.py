@@ -77,11 +77,11 @@ def interquartile_range(
     return percentile(data, 0.75, params) - percentile(data, 0.25, params)
 
 
-def gcd(a, b):
-    if b == 0:
+def gcd(a, b, zero_value=0):
+    if b == zero_value:
         return a
     else:
-        return gcd(b, a % b)
+        return gcd(b, a % b, zero_value)
 
 
 class Mapping:

@@ -10,6 +10,7 @@ from elastalert.queries import BaseQuery
 from elastalert.utils.arithmetic import gcd
 from elastalert.utils.time import dt_to_ts, pretty_ts, total_seconds, ts_now
 from elastalert.utils.util import (
+    add_raw_postfix,
     elasticsearch_client,
     get_starttime,
     lookup_es_key,
@@ -128,14 +129,13 @@ class ElasticsearchQuery(BaseQuery):
         self.num_hits += len(hits)
         lt = self.rule_config.get("use_local_time")
         log.info(
-            "Queried rule %s on %s from %s to %s: %s / %s hits (scrolling %s from )",
+            "Queried rule %s on %s from %s to %s: %s / %s hits",
             self.rule_config["name"],
             self.rule_config["index"],
             pretty_ts(starttime, lt),
             pretty_ts(endtime, lt),
             len(hits),
             self.num_hits,
-            self.total_hits,
         )
 
         return self.process_hits(self.rule_config, hits)
@@ -276,9 +276,12 @@ class ElasticsearchQuery(BaseQuery):
 
 
 class ElasticsearchCountQuery(ElasticsearchQuery):
+    def build_query(self, **kwargs):
+        super().build_query(False)
+
     def set_starttime(self, endtime) -> datetime:
         starttime = super().set_starttime(endtime)
-        if self.rule_config["previous_endtime"] and not self.rule_config.get(
+        if self.rule_config["type"].previous_endtime and not self.rule_config.get(
             "scan_entire_timeframe"
         ):
             # in this case it differs from a normal es query
@@ -310,7 +313,7 @@ class ElasticsearchCountQuery(ElasticsearchQuery):
             res = self.es.count(
                 index=self.rule_config["index"],
                 body=self.query,
-                ignore_unaivailable=True,
+                ignore_unavailable=True,
             )
         except ElasticsearchException as e:
             # Elasticsearch sometimes gives us GIGANTIC error messages
@@ -322,7 +325,7 @@ class ElasticsearchCountQuery(ElasticsearchQuery):
             else:
                 msg = str(e)
             raise EARuntimeException(
-                "Error running terms query %s" % msg,
+                "Error running count query %s" % msg,
                 rule=self.rule_config["name"],
                 query=query,
                 original_exception=e,
@@ -342,7 +345,7 @@ class ElasticsearchCountQuery(ElasticsearchQuery):
 class ElasticsearchTermQuery(ElasticsearchQuery):
     def set_starttime(self, endtime) -> datetime:
         starttime = super().set_starttime(endtime)
-        if self.rule_config["previous_endtime"] and not self.rule_config.get(
+        if self.rule_config["type"].previous_endtime and not self.rule_config.get(
             "scan_entire_timeframe"
         ):
             # in this case it differs from a normal es query
@@ -354,12 +357,13 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
 
     def build_query(self, **kwargs):
         super().build_query(False)
-        self.query["query"].update(
+        key_with_postfix = add_raw_postfix(self.rule_config["query_key"], True)
+        self.query.update(
             {
                 "aggs": {
                     "counts": {
                         "terms": {
-                            "field": self.rule_config["query_key"],
+                            "field": key_with_postfix,
                             "size": self.rule_config.get("terms_size", 50),
                             "min_doc_count": self.rule_config.get("min_doc_count", 1),
                         }
@@ -580,9 +584,13 @@ class ElasticsearchSpikeCountQuery(ElasticsearchCountQuery):
     def get_segment_size(self) -> timedelta:
         """
         The segment size must be the gcd of run_every and the timeframe so that the
-        timeframes for the query can be aligned with the rule timeframe
+        timeframes for the query can be aligned with the rule timeframe.
         """
-        return gcd(config.CFG().run_every, self.rule_config["timeframe"])
+        return gcd(
+            config.CFG().run_every,
+            self.rule_config["timeframe"],
+            zero_value=timedelta(seconds=0),
+        )
 
 
 class ElasticsearchSpikeTermQuery(ElasticsearchTermQuery):
@@ -593,4 +601,8 @@ class ElasticsearchSpikeTermQuery(ElasticsearchTermQuery):
         The segment size must be the gcd of run_every and the timeframe so that the
         timeframes for the query can be aligned with the rule timeframe
         """
-        return gcd(config.CFG().run_every, self.rule_config["timeframe"])
+        return gcd(
+            config.CFG().run_every,
+            self.rule_config["timeframe"],
+            zero_value=timedelta(seconds=0),
+        )
