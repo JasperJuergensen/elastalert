@@ -10,9 +10,9 @@ will look something like this:
 .. code-block:: python
 
     class AwesomeNewRulesLoader(RulesLoader):
-        def get_names(self, conf, use_rule=None):
+        def get_names(self, conf):
             ...
-        def get_hashes(self, conf, use_rule=None):
+        def get_hashes(self, conf):
             ...
         def get_yaml(self, rule):
             ...
@@ -47,7 +47,8 @@ Now, in a file named ``mongo_loader.py``, add
             self.db = self.client[conf['mongo_db']]
             self.cache = {}
 
-        def get_names(self, conf, use_rule=None):
+        def get_names(self, conf):
+            use_rule = conf.args.rule
             if use_rule:
                 return [use_rule]
 
@@ -59,7 +60,8 @@ Now, in a file named ``mongo_loader.py``, add
 
             return rules
 
-        def get_hashes(self, conf, use_rule=None):
+        def get_hashes(self, conf):
+            use_rule = conf.args.rule
             if use_rule:
                 return [use_rule]
 

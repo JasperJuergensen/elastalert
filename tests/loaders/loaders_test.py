@@ -12,6 +12,12 @@ from elastalert import config
 from elastalert.loaders import FileRulesLoader, loader_mapping
 from elastalert.utils.util import EAException
 
+test_args = mock.Mock()
+test_args.config = "test_config"
+test_args.rule = None
+test_args.debug = False
+test_args.es_debug_trace = None
+
 test_config = config.Config(
     **{
         "rules_folder": "test",
@@ -19,10 +25,11 @@ test_config = config.Config(
         "buffer_time": {"minutes": 10},
         "scan_subdirectories": False,
         "es_client": config.ESClient(
-            **{"es_host": "elasticsearch.test", "es_port": 12345,}
+            **{"es_host": "elasticsearch.test", "es_port": 12345}
         ),
         "writeback_index": "test_index",
         "writeback_alias": "test_alias",
+        "args": test_args,
     }
 )
 
@@ -55,28 +62,6 @@ test_rule = {
     "include": ["comparekey", "@timestamp"],
 }
 
-test_args = mock.Mock()
-test_args.config = "test_config"
-test_args.rule = None
-test_args.debug = False
-test_args.es_debug_trace = None
-
-
-def test_file_rules_loader_get_rule_configs():
-    rules_loader = FileRulesLoader(test_config)
-    with mock.patch.object(
-        rules_loader,
-        "get_names",
-        mock.MagicMock(return_value=["test1.yaml", "test2.yaml"]),
-    ):
-        with mock.patch.object(
-            rules_loader, "load_rule", mock.MagicMock(return_value={"test": "test"}),
-        ):
-            assert {
-                "test1.yaml": {"test": "test"},
-                "test2.yaml": {"test": "test"},
-            } == rules_loader.get_rule_configs()
-
 
 def test_file_rules_loader_get_names():
     rules_loader = FileRulesLoader(test_config)
@@ -88,11 +73,12 @@ def test_file_rules_loader_get_names():
             "elastalert.loaders.file_rules_loader.os.path.isfile",
             mock.MagicMock(return_value=True),
         ):
-            assert rules_loader.get_names(test_config) == [
+            assert rules_loader.get_names() == [
                 "test/test1.yaml",
                 "test/test2.yml",
             ]
     test_config.__dict__["scan_subdirectories"] = True
+    rules_loader = FileRulesLoader(test_config)
     with mock.patch(
         "elastalert.loaders.file_rules_loader.os.walk",
         mock.MagicMock(
@@ -106,7 +92,7 @@ def test_file_rules_loader_get_names():
             "folder1/folder2/test1.yml",
             "folder1/test2.yaml",
             "folder1/test3.yaml",
-        ] == rules_loader.get_names(test_config)
+        ] == rules_loader.get_names()
 
 
 def test_file_rules_loader_get_hashes():
@@ -117,9 +103,7 @@ def test_file_rules_loader_get_hashes():
         with mock.patch.object(
             rules_loader, "get_rule_file_hash", mock.MagicMock(return_value="test"),
         ):
-            assert {"test1": "test", "test2": "test"} == rules_loader.get_hashes(
-                test_config
-            )
+            assert {"test1": "test", "test2": "test"} == rules_loader.get_hashes()
 
 
 @mock.patch("builtins.open", mock.mock_open(read_data=b"test:\n    hello: world"))
@@ -148,9 +132,11 @@ def test_file_rules_loader_get_rule_file_hash(mock_path_exists):
     rules_loader = FileRulesLoader(test_config)
     with mock.patch("builtins.open", mock.mock_open(read_data=b"test")):
         mock_path_exists.return_value = True
-        assert hashlib.sha1(b"test").digest() == rules_loader.get_rule_file_hash("test")
+        assert int.from_bytes(
+            hashlib.sha1(b"test").digest(), "big"
+        ) == rules_loader.get_rule_file_hash("test")
         mock_path_exists.return_value = False
-        assert "" == rules_loader.get_rule_file_hash("test")
+        assert 0 == rules_loader.get_rule_file_hash("test")
 
 
 @mock.patch(
@@ -161,9 +147,15 @@ def test_file_rules_loader_get_rule_file_hash_with_import():
     rules_loader = FileRulesLoader(test_config)
     rules_loader.import_rules = {"test": ["import_test"]}
     with mock.patch("builtins.open", mock.mock_open(read_data=b"test")):
-        assert hashlib.sha1(
-            hashlib.sha1(b"test").digest() + hashlib.sha1(b"test").digest()
-        ).digest() == rules_loader.get_rule_file_hash("test")
+        assert int.from_bytes(
+            hashlib.sha1(
+                (
+                    int.from_bytes(hashlib.sha1(b"test").digest(), "big")
+                    + int.from_bytes(hashlib.sha1(b"test").digest(), "big")
+                ).to_bytes(22, "big")
+            ).digest(),
+            "big",
+        ) == rules_loader.get_rule_file_hash("test")
 
 
 def test_file_rules_loader_is_yaml():
@@ -172,8 +164,6 @@ def test_file_rules_loader_is_yaml():
     assert not FileRulesLoader.is_yaml("test.xml")
 
 
-# TODO evaluate if should be removed
-@pytest.mark.skip
 def test_import_rules():
     rules_loader = FileRulesLoader(test_config)
     test_rule_copy = copy.deepcopy(test_rule)
@@ -186,9 +176,12 @@ def test_import_rules():
             # Test that type is imported
             with mock.patch("builtins.__import__") as mock_import:
                 mock_import.return_value = elastalert.ruletypes
-                rule_config = rules_loader.get_rule_configs()
-                print(rule_config)
-            print(mock_import.call_args_list)
+                rule_names = rules_loader.get_names(config.CFG().args.rule)
+                rule_configs = (
+                    rules_loader.load_rule(rule_name) for rule_name in rule_names
+                )
+                for rule_config in rule_configs:
+                    rules_loader.load_modules(rule_config)
             assert mock_import.call_args_list[0][0][0] == "testing.test"
             assert mock_import.call_args_list[0][0][3] == ["RuleType"]
 
@@ -198,7 +191,12 @@ def test_import_rules():
             test_rule_copy["alert"] = "testing2.test2.TestAlerter"
             with mock.patch("builtins.__import__") as mock_import:
                 mock_import.return_value = elastalert.alerter.test_alerter
-                rules_loader.get_rule_configs()
+                rule_names = rules_loader.get_names(config.CFG().args.rule)
+                rule_configs = (
+                    rules_loader.load_rule(rule_name) for rule_name in rule_names
+                )
+                for rule_config in rule_configs:
+                    rules_loader.load_modules(rule_config)
             assert mock_import.call_args_list[0][0][0] == "testing2.test2"
             assert mock_import.call_args_list[0][0][3] == ["TestAlerter"]
 
@@ -248,7 +246,14 @@ def test_import_import():
             }
 
             mock_open.side_effect = [import_rule, import_me]
-            rules = rules_loader.get_rule_configs()
+            rule_names = rules_loader.get_names(config.CFG().args.rule)
+            rule_configs = (
+                rules_loader.load_rule(rule_name) for rule_name in rule_names
+            )
+            rules = {
+                rule_name: rule_config
+                for rule_name, rule_config in zip(rule_names, rule_configs)
+            }
             assert mock_open.call_args_list[0][0] == ("blah.yaml",)
             assert mock_open.call_args_list[1][0] == ("importme.ymlt",)
             assert len(mock_open.call_args_list) == 2
@@ -277,7 +282,14 @@ def test_import_absolute_import():
             }
 
             mock_open.side_effect = [import_rule, import_me]
-            rules = rules_loader.get_rule_configs()
+            rule_names = rules_loader.get_names(config.CFG().args.rule)
+            rule_configs = (
+                rules_loader.load_rule(rule_name) for rule_name in rule_names
+            )
+            rules = {
+                rule_name: rule_config
+                for rule_name, rule_config in zip(rule_names, rule_configs)
+            }
             assert mock_open.call_args_list[0][0] == ("blah.yaml",)
             assert mock_open.call_args_list[1][0] == ("/importme.ymlt",)
             assert len(mock_open.call_args_list) == 2
@@ -305,7 +317,14 @@ def test_import_filter():
             }
 
             mock_open.side_effect = [import_rule, import_me]
-            rules = rules_loader.get_rule_configs()
+            rule_names = rules_loader.get_names(config.CFG().args.rule)
+            rule_configs = (
+                rules_loader.load_rule(rule_name) for rule_name in rule_names
+            )
+            rules = {
+                rule_name: rule_config
+                for rule_name, rule_config in zip(rule_names, rule_configs)
+            }
             assert rules["test_rule"]["filter"] == [
                 {"term": {"ratchet": "clank"}},
                 {"term": {"key": "value"}},
@@ -344,6 +363,7 @@ def test_file_rules_loader_get_names_recursive():
             "run_every": None,
             "buffer_time": None,
             "writeback_index": None,
+            "args": test_args,
         }
     )
     rules_loader = FileRulesLoader(conf)
@@ -354,7 +374,7 @@ def test_file_rules_loader_get_names_recursive():
     )
     with mock.patch("os.walk") as mock_walk:
         mock_walk.return_value = walk_paths
-        paths = rules_loader.get_names(conf)
+        paths = rules_loader.get_names()
 
     paths = [p.replace(os.path.sep, "/") for p in paths]
 
@@ -396,7 +416,7 @@ def test_load_ssl_env_false():
             with mock.patch("os.walk") as mock_ls:
                 mock_ls.return_value = [("", [], ["testrule.yaml"])]
                 conf_obj = setup_test_config()
-                assert conf_obj.es_client.use_ssl == False
+                assert conf_obj.es_client.use_ssl is False
 
 
 def test_load_ssl_env_true():

@@ -111,10 +111,10 @@ class RulesLoader(metaclass=ABCMeta):
         self.base_config: config.Config = copy.deepcopy(conf)
 
     def load(self, args=None) -> Dict[str, dict]:
-        # TODO rule_name as argument
-        rule_configs = self.get_rule_configs()
+        rule_names = self.get_names(config.CFG().args.rule)
+        rule_configs = (self.load_rule(rule_name) for rule_name in rule_names)
         loaded_rule_configs = {}
-        for rule_name, rule_config in rule_configs.items():
+        for rule_name, rule_config in zip(rule_names, rule_configs):
             if not rule_config:
                 continue
             rule_name = rule_config["name"]
@@ -130,18 +130,11 @@ class RulesLoader(metaclass=ABCMeta):
         return loaded_rule_configs
 
     @abstractmethod
-    def get_rule_configs(self) -> Dict[str, dict]:
-        """
-        Loads the rule configurations
-        :return Dict[str, dict]: A dict with the rule configs. The key is the rule name and value is the config
-        """
-
-    @abstractmethod
-    def get_hashes(self, use_rule: str = None) -> Dict[str, str]:
+    def get_hashes(self, use_rule: str = None) -> Dict[str, int]:
         """
         Discover and get the hashes of all the rules as defined in the conf.
-        :param str use_rule: Limit to only specified rule
-        :return: Dict of rule name to hash
+        :param use_rule: Get only the hash of this rule if the parameter is not None
+        :return: Dict of rule name to hash. The hash is an integer
         :rtype: dict
         """
 
@@ -149,9 +142,16 @@ class RulesLoader(metaclass=ABCMeta):
     def get_rule_config(self, name: str) -> dict:
         """
         Gets the rule config for a rule name
-
         :param name: The rule name
         :return dict: The rule config
+        """
+
+    @abstractmethod
+    def get_names(self, use_rule: str = None) -> List[str]:
+        """
+        Get the names of all rules in a form that get_rule_config(name) can load the rule
+        :param use_rule: Get only the name of this rule if the parameter is not None
+        :return: List of rule names
         """
 
     def get_import_rule(self, rule_config: dict) -> str:
