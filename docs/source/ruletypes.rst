@@ -938,14 +938,19 @@ The default is an empty timeframe (0 seconds).
 
 ``spike_ref_metric``: This metric will be calculated over the reference event windows. When this metric is used, there must
 be more then one reference window. For example, ``mean`` calculates the mean value of the counts in the reference windows
-and for an alert the count in the current window must be ``spike_height`` time higher or lower this value.
+and for an alert the count in the current window must be ``spike_height`` time higher or lower this value. The metric can
+be one of the metrics listed below or an importable function which takes the data as a first argument, for example
+``statistics.harmonic_mean``. The default metric is ``mean``.
 
 ``spike_ref_metric_args``: Arguments for the ``spike_ref_metric``. The arguments are a mapping (e.g. ``percentile: 0.5``)
 A table with arguments for different metrics is below.
 
 ``spike_height_metric``: This metric will be calculated over the reference windows and should be logically one of the deviation metrics.
 To alert the count in the current window must be ``spike_height`` * the value of spike_height_metric times higher or
-lower than the value of the reference window.
+lower than the value of the reference window. The metric can be one of the metrics listed below or an importable
+function which takes the data as a first argument, for example ``statistics.harmonic_mean``. The default metric is ``fixed``,
+which is a static value of 1. If the value is fixed, the spike height is interpreted as ``ref * spike_height``, else as
+``ref + spike_height_metric * spike_height``.
 
 ``spike_heigh_metric_args``: Arguments for the ``spike_height_metric``. The arguments are a mapping (e.g. ``percentile: 0.5``)
 A table with arguments for different metrics is below.
@@ -958,11 +963,13 @@ A table with arguments for different metrics is below.
     |                     | ``params`` These parameters (a,b,c,d) are used to calculate    |
     |                     |     the percentile. See below for more info.                   |
     +---------------------+----------------------------------------------------------------+
-    | mean                |                                                                |
+    | mean                | Uses the mean function from the python statistics module       |
     +---------------------+----------------------------------------------------------------+
-    | median              |                                                                |
+    | median              | Uses the median function from the python statistics module     |
     +---------------------+----------------------------------------------------------------+
-    | standard_deviation  |                                                                |
+    | stdev               | Uses the stdev function from the python statistics module.     |
+    +---------------------+----------------------------------------------------------------+
+    | variance            | Uses the variance function from the python statistics module.  |
     +---------------------+----------------------------------------------------------------+
     | mad                 |                                                                |
     +---------------------+----------------------------------------------------------------+
@@ -992,8 +999,7 @@ A table with arguments for different metrics is below.
     (1/3, 1/3, 0, 1)        median-based estimate
     (3/8, 1/4, 0, 1)        normal distribution estimate
     Whenever ``d = 0`` the result is always equal to an element in the list.
-    For the median (1/2, 0, 0, 1) is used.
-    The default for the quartiles in the interquartile_range are the default parameters.
+    The default params for the quartiles in the interquartile_range are the default parameters of the percentile function.
 
 ``threshold_ref``: The minimum reference metric value for an alert to trigger. For example, if
 ``spike_height: 3`` and ``threshold_ref: 10``, then the reference metric value must be at least 10 and the current value at

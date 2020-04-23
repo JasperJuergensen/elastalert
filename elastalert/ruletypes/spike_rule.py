@@ -10,7 +10,6 @@ from elastalert.queries.elasticsearch_query import (
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes import RuleType
 from elastalert.utils import arithmetic
-from elastalert.utils.arithmetic import mean
 from elastalert.utils.event_window import CountEventWindow
 from elastalert.utils.time import pretty_ts
 from elastalert.utils.util import hashable, lookup_es_key, new_get_event_ts
@@ -29,13 +28,13 @@ class SpikeRule(RuleType):
         )
 
         self.ref_window_count = self.rule_config.get("ref_window_count", 1)
-        self.spike_ref_metric = arithmetic.mapping[
+        self.spike_ref_metric = arithmetic.Mapping.get(
             self.rule_config.get("spike_ref_metric", "mean")
-        ]
+        )
         self.spike_ref_metric_args = self.rule_config.get(
             "spike_ref_metric_args", dict()
         )
-        self.spike_height_metric = arithmetic.mapping.get(
+        self.spike_height_metric = arithmetic.Mapping.get(
             self.rule_config.get("spike_height_metric", "fixed"), lambda ref: 1
         )
         self.spike_height_metric_args = self.rule_config.get(

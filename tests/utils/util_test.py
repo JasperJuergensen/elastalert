@@ -1,18 +1,20 @@
 from datetime import datetime, timedelta
 from math import sqrt
+from statistics import StatisticsError, harmonic_mean
 from unittest import TestCase
 
 import mock
 import pytest
 from dateutil.parser import parse as dt
 from elastalert.utils.arithmetic import (
+    Mapping,
     fractional_part,
     interquartile_range,
     mad,
     mean,
     median,
     percentile,
-    standard_deviation,
+    stdev,
     variance,
 )
 from elastalert.utils.util import (
@@ -220,20 +222,6 @@ def test_fractional_part():
     assert fractional_part(100.1234) == 0.1234
 
 
-def test_mean():
-    assert mean([1, 2, 3, 4, 5, 6, 7, 8]) == 9 / 2
-    assert mean([1]) == 1
-    with pytest.raises(ValueError):
-        mean([])
-
-
-def test_median():
-    assert median([1, 2, 3, 4, 5, 6, 7, 8]) == 9 / 2
-    assert median([1, 2, 3, 4, 5, 6, 7, 20]) == 9 / 2
-    with pytest.raises(ValueError):
-        median([])
-
-
 def test_percentile():
     assert percentile([1], 0.25) == 1
     assert percentile([1], 0.25, (0, 0, 0, 1)) == 1
@@ -244,31 +232,19 @@ def test_percentile():
     assert percentile([1, 1, 3, 5], 0.7, (1 / 2, 0, 0, 0)) == 3
     assert percentile([1, 1, 3, 5], 0.7, (1 / 2, 0, 0, 1)) == 3.6
     assert percentile([1, 1, 3, 5], 0.99, (0, 0, 0, 1)) == 4.92
-    with pytest.raises(ValueError):
+    with pytest.raises(StatisticsError):
         percentile([])
-
-
-def test_variance():
-    assert variance([1, 2, 3, 4, 5, 6, 7, 8]) == 6
-    TestCase().assertAlmostEqual(208 / 21, variance([10, 10, 10, 15, 15, 16, 17]))
-    assert variance([5, 63]) == 1682
-    with pytest.raises(ValueError):
-        variance([5])
-
-
-def test_standard_deviation():
-    assert standard_deviation([1, 2, 3, 4, 5, 6, 7, 8]) == sqrt(6)
-    assert standard_deviation([1, 2, 3, 4, 5, 6, 7, 20]) == 6
-    TestCase().assertAlmostEqual(29 * sqrt(2), standard_deviation([5, 63]))
-    with pytest.raises(ValueError):
-        standard_deviation([5])
+    with pytest.raises(StatisticsError):
+        percentile([1, 2, 3, 4], 1.1)
+    with pytest.raises(StatisticsError):
+        percentile([1, 2, 3, 4], -0.01)
 
 
 def test_mad():
     assert mad([1, 2, 3, 4]) == 1
     assert mad([100]) == 0
     assert mad([0, 100]) == 50
-    with pytest.raises(ValueError):
+    with pytest.raises(StatisticsError):
         mad([])
 
 
@@ -279,5 +255,11 @@ def test_interquartile_range():
     assert interquartile_range([1, 1, 3, 5, 4], (0, 0, 0, 1)) == 11 / 4
     assert interquartile_range([1, 1, 3, 5, 4], (1 / 2, 0, 0, 1)) == 13 / 4
     assert interquartile_range([1, 1, 3, 5, 4], (1 / 2, 0, 0, 0)) == 3
-    with pytest.raises(ValueError):
+    with pytest.raises(StatisticsError):
         interquartile_range([])
+
+
+def test_arithmetic_mapping():
+    assert Mapping.get("stdev") == stdev
+    assert Mapping.get("not_found", "default") == "default"
+    assert Mapping.get("statistics.harmonic_mean") == harmonic_mean

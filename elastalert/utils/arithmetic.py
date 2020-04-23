@@ -1,26 +1,10 @@
 from decimal import Decimal
-from math import ceil, floor, sqrt
+from math import ceil, floor
+from statistics import StatisticsError, mean, median, stdev, variance
 from typing import List, Tuple, Union
 
-
-def mean(data: List[Union[int, float]]) -> float:
-    """
-    Calculates the mean over the list values
-    :param data: list of values
-    :return: the mean
-    """
-    if len(data) == 0:
-        raise ValueError("The data list cannot be empty")
-    return sum(data) / len(data)
-
-
-def median(data: List[Union[int, float]]) -> float:
-    """
-    Calculates the median over a list of values
-    :param data: list of values
-    :return: the median
-    """
-    return percentile(data, 1 / 2, (1 / 2, 0, 0, 1))
+from elastalert.exceptions import EAException
+from elastalert.utils.util import get_module
 
 
 def fractional_part(x: float) -> float:
@@ -47,10 +31,10 @@ def percentile(
     :return: the nth percentile
     """
     if len(data) == 0:
-        raise ValueError("The data list cannot be empty")
+        raise StatisticsError("The data list cannot be empty")
     a, b, c, d = params
     if percentile < 0 or percentile > 1:
-        raise ValueError("percentile value must be between 0 and 100")
+        raise StatisticsError("percentile value must be between 0 and 100")
     data = [0] + sorted(data)
     n = len(data) - 1
     x = a + (n + b) * percentile
@@ -66,27 +50,6 @@ def percentile(
         # x is an int
         return float(data[int(x)])
     return data[fl] + (data[ce] - data[fl]) * (c + d * fractional_part(x))
-
-
-def variance(data: List[Union[int, float]]) -> float:
-    """
-    Calculates the variance of a list of values
-    :param data: the list of values
-    :return: the variance
-    """
-    if len(data) < 2:
-        raise ValueError("The data should have at least two elements")
-    m = mean(data)
-    return sum((xi - m) ** 2 for xi in data) / (len(data) - 1)
-
-
-def standard_deviation(data: List[Union[int, float]]) -> float:
-    """
-    Calculates the standard deviation of a list of values
-    :param data: list of values
-    :return: the standard derivation
-    """
-    return sqrt(variance(data))
 
 
 def mad(data: List[Union[int, float]]) -> float:
@@ -121,15 +84,27 @@ def gcd(a, b):
         return gcd(b, a % b)
 
 
-mapping = {
-    "mean": mean,
-    "median": median,
-    "sum": sum,
-    "min": min,
-    "max": max,
-    "percentile": percentile,
-    "variance": variance,
-    "MAD": mad,
-    "standard_derivation": standard_deviation,
-    "interquartile_range": interquartile_range,
-}
+class Mapping:
+
+    items = {
+        "mean": mean,
+        "median": median,
+        "sum": sum,
+        "min": min,
+        "max": max,
+        "percentile": percentile,
+        "variance": variance,
+        "MAD": mad,
+        "stdev": stdev,
+        "interquartile_range": interquartile_range,
+    }
+
+    @classmethod
+    def get(cls, item: str, default=None):
+        if item in cls.items:
+            return cls.items[item]
+        else:
+            try:
+                return get_module(item)
+            except EAException:
+                return default
