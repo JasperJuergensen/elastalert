@@ -439,6 +439,7 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
         segment_size = self.get_segment_size()
         tmp_endtime = starttime
         while endtime - tmp_endtime >= segment_size:
+            tmp_endtime += segment_size
             cumulative_hits += self.run_query(starttime, tmp_endtime)
             starttime = tmp_endtime
             self.rule_config["type"].garbage_collect(tmp_endtime)
@@ -515,13 +516,12 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
             aggs_element = self.rule_config["aggregation_query_element"]
 
         if self.rule_config.get("query_key"):
-            for idx, key in reversed(
-                list(enumerate(self.rule_config["query_key"].split(",")))
-            ):
+            for key in reversed(self.rule_config["query_key"].split(",")):
+                key_with_postfix = add_raw_postfix(key, True)
                 aggs_element = {
                     "bucket_aggs": {
                         "terms": {
-                            "field": key,
+                            "field": key_with_postfix,
                             "size": self.rule_config.get("terms_size", 50),
                             "min_doc_count": self.rule_config.get("min_doc_count", 1),
                         },
@@ -606,3 +606,16 @@ class ElasticsearchSpikeTermQuery(ElasticsearchTermQuery):
             self.rule_config["timeframe"],
             zero_value=timedelta(seconds=0),
         )
+
+
+class ElasticsearchSpikeAggregationQuery(ElasticsearchAggregationQuery):
+    """Elasticsearch aggregation query for spike metric aggregation rules"""
+
+    def set_starttime(self, endtime) -> datetime:
+        return endtime - (
+            self.rule_config["timeframe"]
+            * (self.rule_config.get("ref_window_count", 1) + 1)
+        )
+
+    def get_segment_size(self) -> timedelta:
+        return self.rule_config["timeframe"]
