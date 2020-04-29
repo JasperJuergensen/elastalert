@@ -104,8 +104,18 @@ oneOf:
       threshold_cur: {type: integer}
       ref_window_count: {type: integer, minimum: 1}
       gap_timeframe: *timeframe
-      spike_ref_metric: {enum: ["percentile", "mean", "median", "standard_deviation", "mad", "interquartile_range", "sum", "min", "max", "fixed"]}
+      spike_ref_metric: {enum: ["percentile", "mean", "median", "standard_deviation", "mad", "interquartile_range", "sum", "min", "max"]}
       spike_ref_metric_args:
+        oneOf:
+          - title: percentile
+            properties:
+              percentile: {type: number, minimum: 0, maximum: 1}
+              params: {type: array, items: [{type: number}, {type: number}, {type: number}, {type: number}]}
+          - title: interquartile_range
+            properties:
+              params: {type: array, items: [{type: number}, {type: number}, {type: number}, {type: number}]}
+      spike_height_metric: {enum: ["percentile", "mean", "median", "standard_deviation", "mad", "interquartile_range", "sum", "min", "max", "fixed"]}
+      spike_height_metric_args:
         oneOf:
           - title: percentile
             properties:
