@@ -49,6 +49,11 @@ class Parser(object):
             "--silence <units>=<number>, eg. --silence hours=2",
         )
         parser.add_argument(
+            "--silence_qk_value",
+            dest="silence_qk_value",
+            help="Silence the rule only for this specific query key value.",
+        )
+        parser.add_argument(
             "--start",
             dest="start",
             help="YYYY-MM-DDTHH:MM:SS Start querying from this timestamp. "

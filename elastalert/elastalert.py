@@ -664,7 +664,12 @@ class ElastAlerter(object):
 
         first_rule = next(iter(self.rules.values()))
         if not silence_cache_key:
-            silence_cache_key = first_rule["name"] + "._silence"
+            if config.CFG().args.silence_qk_value:
+                silence_cache_key = (
+                    first_rule["name"] + config.CFG().args.silence_qk_value
+                )
+            else:
+                silence_cache_key = first_rule["name"] + "._silence"
 
         try:
             silence_ts = parse_deadline(config.CFG().args.silence)
