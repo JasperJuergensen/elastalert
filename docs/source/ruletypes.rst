@@ -1279,6 +1279,43 @@ See: https://docs.python.org/3.4/library/string.html#format-specification-mini-l
 
 ``min_denominator``: Minimum number of documents on which percentage calculation will apply. Default is 0.
 
+Correlation
+~~~~~~~~~~~
+
+``correlation``: This rule matches if a sequence of events matches a state machine.
+
+This rule requires:
+
+``event_name_field``: This is the field in the events where the transition name for the state machine is found.
+
+``state_machine``: Define the state machine. The state machine consists of three parts, the events, conditions and the final states.
+    ``events``: This is a list of events which define transitions between states. Each event must have a name (``name``) and a destination (``dst``).
+    Optional an event can have a source (``src``). If no source is given, every state is taken as the source. The name of the event is the value
+    matched against the value in the ``event_name_field`` field in the elasticsearch document. Source and destination can be choosen freely.
+    There is always a state named ``ST``. The is the initial state of the state machine. Events which have ``ST`` as source are the start events.
+    Every time a start event occurs, a new state machine is created, even if there is already a state machine.
+
+    ``final_states``: The final states is a list of final states in the state machine. If ``alert_on_final`` is set to true (default) then this rule
+    will send an alert every time the state machine is in a final state.
+
+    ``conditions``: Conditions can be defined for events. Currently only time conditions are possible. Time conditions are applied between two states
+    in the state machine. They must have a source (``src``), a destination (``dst``) and a timeframe (``timeframe``). The condition defines the maximal
+    time which can pass between the source state and the destination state. The check is evaluated when trying to enter the destination state. It is not
+    required that there is a transition directly from source to destination. If the destination event is entered and the source event has never occured
+    before, the condition returns true.
+
+``alert_on_final``: If this value is true, the rule sends an alert every time a final state is reached. If false, it sends an alert if for a given state
+and a event no transition is possible. Defaults to true.
+
+``remove_on_failed_precondition``: If this value is true, every time a condition fails for an event, the transition for which the condition failed is
+removed from the current state machine. Defaults to true.
+
+``remove_on_not_accepted``: This value is only evaluated if ``alert_on_final`` is false. If set to true, if for a given state and a event no transition is
+possible, the state machine is removed. Defaults to true.
+
+``multiple_alerts``: Every time a start event occurs a new state machine is created. If there are multiple state machines, which would send an alert with
+the current event only one alert is send if ``multiple_alerts`` is false. Defaults to true.
+
 .. _alerts:
 
 Alerts

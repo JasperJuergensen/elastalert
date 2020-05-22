@@ -13,3 +13,4 @@ from elastalert.ruletypes.spike_metric_aggregation_rule import (
 )
 from elastalert.ruletypes.spike_rule import SpikeRule
 from elastalert.ruletypes.whitelist_rule import WhitelistRule
+from elastalert.ruletypes.correlation_rule import CorrelationRule

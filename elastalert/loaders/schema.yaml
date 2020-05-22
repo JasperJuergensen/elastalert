@@ -161,6 +161,45 @@ oneOf:
     properties:
       type: {enum: [percentage_match]}
 
+  - title: Correlation
+    required: [event_name_field, state_machine]
+    properties:
+      type: {enum: [correlation]}
+      event_name_field: {type: string}
+      state_machine:
+        type: object
+        additionalProperties: false
+        required: [events, final_states]
+        properties:
+          events:
+            type: array,
+            items:
+              type: object,
+              additionalProperties: false
+              required: [name, dst]
+              properties:
+                name: {type: string}
+                src: {oneOf: [{type: string}, {type: array, items: {type: string}}]}
+                dst: {type: string}
+          final_states: {type: array, items: {type: string}}
+          conditions:
+            type: array
+            items:
+              oneOf:
+                - title: Time condition
+                  type: object
+                  additionalProperties: false
+                  required: [src, dst, timeframe]
+                  properties:
+                    name: {type: string}
+                    src: {type: string}
+                    dst: {type: string}
+                    timeframe: *timeframe
+      alert_on_final: {type: boolean}
+      remove_on_failed_precondition: {type: boolean}
+      remove_on_not_accepted: {type: boolean}
+      mutitple_alerts: {type: boolean}
+
   - title: Custom Rule from Module
     properties:
       # custom rules include a period in the rule type

@@ -16,6 +16,7 @@ from elastalert.ruletypes import (
     SpikeRule,
     WhitelistRule,
 )
+from elastalert.ruletypes.correlation_rule import CorrelationRule
 from elastalert.ruletypes.test_base_aggregation_rule import TestBaseAggregationRule
 from elastalert.utils.event_window import EventWindow
 from elastalert.utils.time import dt_to_ts, ts_to_dt
@@ -1336,3 +1337,321 @@ class RuleTest(unittest.TestCase):
             datetime.datetime.now(), "qk_val", {"metric_cpu_pct_avg": {"value": 0.95}}
         )
         assert rule.matches[0]["qk"] == "qk_val"
+
+    def test_correlation_rule(self):
+        rules = {
+            "event_name_field": "rule_name",
+            "state_machine": {
+                "events": [
+                    {"name": "a", "src": "ST", "dst": "A"},  # initial_event
+                    {"name": "b", "src": "A", "dst": "B"},
+                    {"name": "c", "src": "B", "dst": "C"},
+                    {"name": "d", "src": "B", "dst": "D"},
+                ],
+                "final_states": ["C", "D"],
+            },
+            "include": [],
+        }
+
+        # no initial event
+        rule = CorrelationRule(rules)
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines["all"]) == 0
+
+        rule = CorrelationRule(rules)
+        # initial event
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        assert rule.state_machines["all"][0].log[1][0] == "a"
+        assert rule.state_machines["all"][0].log[1][1] == "ST"
+        assert rule.state_machines["all"][0].log[1][2] == "A"
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 1
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 2
+        assert len(rule.matches) == 0
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 2
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines["all"]) == 0
+        assert len(rule.matches) == 2
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        assert rule.state_machines["all"][0].current == "B"
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        assert rule.state_machines["all"][0].current == "B"
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 2
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 3
+        assert len(rule.matches) == 0
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 3
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 2
+        assert len(rule.matches) == 0
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 2
+
+    def test_correlation_rule_no_multiple_alerts(self):
+        rules = {
+            "event_name_field": "rule_name",
+            "state_machine": {
+                "events": [
+                    {"name": "a", "src": "ST", "dst": "A"},  # initial_event
+                    {"name": "b", "src": "A", "dst": "B"},
+                    {"name": "c", "src": "B", "dst": "C"},
+                    {"name": "d", "src": "B", "dst": "D"},
+                ],
+                "final_states": ["C", "D"],
+            },
+            "include": [],
+            "multiple_alerts": False,
+        }
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 2
+        assert len(rule.matches) == 0
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 1
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 2
+        assert len(rule.matches) == 0
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"},
+            ]
+        )
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 2
+
+    def test_correlation_rule_no_remove_on_final(self):
+        rules = {
+            "event_name_field": "rule_name",
+            "state_machine": {
+                "events": [
+                    {"name": "a", "src": "ST", "dst": "A"},  # initial_event
+                    {"name": "b", "src": "A", "dst": "B"},
+                    {"name": "c", "src": "B", "dst": "C"},
+                    {"name": "d", "src": "B", "dst": "D"},
+                    {"name": "x", "src": "D", "dst": "B"},
+                ],
+                "final_states": ["C", "D"],
+            },
+            "include": [],
+        }
+        rule = CorrelationRule(rules)
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+            ]
+        )
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "d"}])
+        # state D is a final state but has outgoing events
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 1
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "x"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 1
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "d"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 2
+
+        rule = CorrelationRule(rules)
+        rule.add_data(
+            [
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"},
+                {"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "b"},
+            ]
+        )
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "c"}])
+        # state C has no outgoing events -> will be removed
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 1
+
+    def test_correlation_rule_conditions(self):
+        rules = {
+            "event_name_field": "rule_name",
+            "state_machine": {
+                "events": [
+                    {"name": "a", "src": "ST", "dst": "A"},
+                    {"name": "b", "src": "A", "dst": "B"},
+                    {"name": "c", "src": "B", "dst": "C"},
+                    {"name": "d", "src": "C", "dst": "D"},
+                ],
+                "final_states": ["D"],
+                "conditions": [
+                    {
+                        "name": "single",
+                        "src": "B",
+                        "dst": "C",
+                        "timeframe": {"seconds": 10},
+                    },
+                    {
+                        "name": "multiple",
+                        "src": "B",
+                        "dst": "D",
+                        "timeframe": {"seconds": 15},
+                    },
+                ],
+            },
+            "include": [],
+        }
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:38Z", "rule_name": "b"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:40Z", "rule_name": "c"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:42Z", "rule_name": "d"}])
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 1
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:38Z", "rule_name": "b"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:50Z", "rule_name": "c"}])
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 0
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:38Z", "rule_name": "b"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:45Z", "rule_name": "c"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:55Z", "rule_name": "d"}])
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 0
+
+    def test_correlation_rule_conditions2(self):
+        rules = {
+            "event_name_field": "rule_name",
+            "state_machine": {
+                "events": [
+                    {"name": "a", "src": ["ST", "C"], "dst": "A"},
+                    {"name": "b", "src": "A", "dst": "B"},
+                    {"name": "c", "src": "A", "dst": "C"},
+                ],
+                "final_states": ["B"],
+                "conditions": [
+                    {
+                        "name": "single",
+                        "src": "A",
+                        "dst": "B",
+                        "timeframe": {"seconds": 10},
+                    },
+                ],
+            },
+            "multiple_alerts": False,
+            "include": [],
+        }
+
+        rule = CorrelationRule(rules)
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:34Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:23:50Z", "rule_name": "c"}])
+        assert len(rule.state_machines["all"]) == 1
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:24:00Z", "rule_name": "a"}])
+        assert len(rule.state_machines["all"]) == 2
+        assert len(rule.matches) == 0
+        rule.add_data([{"@timestamp": "2020-03-26T12:24:05Z", "rule_name": "b"}])
+        assert len(rule.state_machines) == 0
+        assert len(rule.matches) == 1

@@ -11,14 +11,7 @@ from elastalert.enhancements.drop_match_exception import DropMatchException
 from elastalert.exceptions import EAException, EARuntimeException
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.utils.elastic import get_aggregation_key_value, get_query_key_value
-from elastalert.utils.time import (
-    dt_to_ts,
-    seconds,
-    total_seconds,
-    ts_now,
-    ts_to_dt,
-    unix_to_dt,
-)
+from elastalert.utils.time import dt_to_ts, seconds, ts_now, ts_to_dt, unix_to_dt
 from elastalert.utils.util import elasticsearch_client, lookup_es_key
 from elasticsearch import ElasticsearchException
 

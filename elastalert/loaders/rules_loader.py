@@ -66,6 +66,7 @@ class RulesLoader(metaclass=ABCMeta):
         "metric_aggregation": ruletypes.MetricAggregationRule,
         "percentage_match": ruletypes.PercentageMatchRule,
         "spike_aggregation": ruletypes.SpikeMetricAggregationRule,
+        "correlation": ruletypes.CorrelationRule,
     }
 
     # Used to map names of alerts to their classes
