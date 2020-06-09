@@ -128,7 +128,8 @@ class Alerter(metaclass=ABCMeta):
             summary_table_fields = self.rule["summary_table_fields"]
             if not isinstance(summary_table_fields, list):
                 summary_table_fields = [summary_table_fields]
-            # Include a count aggregation so that we can see at a glance how many of each aggregation_key were encountered
+            # Include a count aggregation so that we can see at a glance how many of
+            # each aggregation_key were encountered
             summary_table_fields_with_count = summary_table_fields + ["count"]
             text += "Aggregation resulted in the following data for summary_table_fields ==> {0}:\n\n".format(
                 summary_table_fields_with_count

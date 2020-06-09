@@ -22,15 +22,20 @@ from elastalert import config
 from elastalert.exceptions import EAConfigException, EARuntimeException
 from elastalert.loaders import loader_mapping
 from elastalert.utils.elastic import get_aggregation_key_value
-from elastalert.utils.time import dt_to_ts, dt_to_unix, pretty_ts, ts_to_dt
+from elastalert.utils.time import (
+    dt_to_ts,
+    dt_to_unix,
+    pretty_ts,
+    total_seconds,
+    ts_now,
+    ts_to_dt,
+)
 from elastalert.utils.util import (
     EAException,
     elasticsearch_client,
     enhance_filter,
     get_module,
     parse_deadline,
-    total_seconds,
-    ts_now,
 )
 from elasticsearch.exceptions import ConnectionError, ElasticsearchException
 

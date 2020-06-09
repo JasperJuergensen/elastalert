@@ -174,7 +174,8 @@ class NewTermsRule(RuleType):
                         # end-users a heads up to help them debug what might be going on.
                         log.warning(
                             (
-                                "No results were found from all sub-aggregations.  This can either indicate that there is "
+                                "No results were found from all sub-aggregations.  "
+                                "This can either indicate that there is "
                                 "no baseline data OR that a non-primitive field was used in a composite key."
                             )
                         )
