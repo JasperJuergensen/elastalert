@@ -1,0 +1,13 @@
+name: prophet
+channels:
+  - defaults
+  - anaconda
+  - conda-forge
+dependencies:
+  - python=3.6
+  - fbprophet
+  - pip
+  - elasticsearch-dsl
+  - click
+  - pip:
+    - mlflow>=1.8

@@ -1,0 +1,9 @@
+name: sklearn_logistic_example
+
+conda_env: conda.yaml
+
+entry_points:
+  main:
+    parameters:
+        limit_data: {type: string, default: None}
+    command: "python train.py {limit_data}"

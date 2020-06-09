@@ -1,0 +1,14 @@
+name: loglizer_example
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - pip
+  - python=3.7
+  - pandas
+  - pytorch
+  - numpy
+  - scikit-learn=0.22
+  - pip:
+    - mlflow>=1.8
+    - /home/chris/github/elastalert/example/maas_models/loglizer/dependencies/loglizer

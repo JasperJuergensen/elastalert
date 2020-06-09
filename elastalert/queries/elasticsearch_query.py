@@ -124,6 +124,7 @@ class ElasticsearchQuery(BaseQuery):
                 )
 
         hits = res["hits"]["hits"]
+
         self.num_hits += len(hits)
         lt = self.rule_config.get("use_local_time")
         log.info(
@@ -187,6 +188,7 @@ class ElasticsearchQuery(BaseQuery):
                 self.es.clear_scroll(scroll_id=self.scroll_id)
             except NotFoundError:
                 pass
+            self.scroll_id = None
         return self.num_hits
 
     def remove_duplicates(self, data: List[dict]) -> List[dict]:
@@ -232,7 +234,8 @@ class ElasticsearchQuery(BaseQuery):
             ts = lookup_es_key(hit["_source"], rule_config["timestamp_field"])
             if not ts and not rule_config["_source_enabled"]:
                 raise EARuntimeException(
-                    "Error: No timestamp was found for hit. '_source_enabled' is set to false, check your mappings for stored fields"
+                    "Error: No timestamp was found for hit. '_source_enabled' is set to false, "
+                    "check your mappings for stored fields"
                 )
 
             set_es_key(
@@ -428,18 +431,22 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
 
 class ElasticsearchAggregationQuery(ElasticsearchQuery):
     def run(self, endtime: datetime) -> Tuple[datetime, datetime, int]:
-        starttime = self.set_starttime(endtime)
+        if self.rule_config.get("initial_starttime"):
+            starttime = self.rule_config["initial_starttime"]
+        else:
+            starttime = self.set_starttime(endtime)
         original_starttime = starttime
         cumulative_hits = 0
         segment_size = self.get_segment_size()
         tmp_endtime = starttime
         while endtime - tmp_endtime >= segment_size:
+            tmp_endtime += segment_size
             cumulative_hits += self.run_query(starttime, tmp_endtime)
             starttime = tmp_endtime
             self.rule_config["type"].garbage_collect(tmp_endtime)
         if total_seconds(original_starttime - tmp_endtime) != 0:
             endtime = tmp_endtime
-        return starttime, endtime, cumulative_hits
+        return original_starttime, endtime, cumulative_hits
 
     def set_starttime(self, endtime) -> datetime:
         starttime = super().set_starttime(endtime)
@@ -541,6 +548,7 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
                     }
                 }
             )
+
         try:
             log.debug("Running query: %s", self.query)
             res = self.es.search(
@@ -571,3 +579,69 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
         self.num_hits += res["hits"]["total"]["value"]
 
         return {endtime: payload}
+
+
+class ElasticsearchMaasAggregationQuery(ElasticsearchAggregationQuery):
+    """Elasticsearch aggregation query for spike metric aggregation rules"""
+
+    def set_starttime(self, endtime) -> datetime:
+        if self.rule_config["type"].previous_endtime:
+            starttime = self.rule_config["type"].previous_endtime
+            starttime = self.adjust_start_time_for_overlapping_agg_query(starttime)
+            starttime = self.adjust_start_time_for_bucket_interval_sync(starttime)
+        else:
+            starttime = super().set_starttime(endtime)
+
+        return starttime
+
+    def run(self, endtime: datetime) -> Tuple[datetime, datetime, int]:
+        if self.rule_config.get("initial_starttime"):
+            starttime = self.rule_config["initial_starttime"]
+        else:
+            starttime = self.set_starttime(endtime)
+        original_starttime = starttime
+        cumulative_hits = 0
+        segment_size = self.get_segment_size()
+        tmp_endtime = starttime
+        while endtime - tmp_endtime >= segment_size:
+            tmp_endtime += segment_size
+            cumulative_hits += self.run_query(starttime, tmp_endtime)
+            starttime = tmp_endtime
+            self.rule_config["type"].garbage_collect(tmp_endtime)
+
+        # Do not overlap queries, so set endtime=tmp_endtime, as it reflects the real endtime of the query
+        # Overlapping queries dont make much sense in the case of aggregation mas because we get multiple alerts
+        # for the same anomaly behavior or sometimes anomalies and sometimes not for the same buckets
+        # its a better strategy to delay the query until the data should be available
+        return original_starttime, tmp_endtime, cumulative_hits
+
+    def get_hits(self, starttime: datetime, endtime: datetime) -> Union[dict, None]:
+
+        # Patch Query for buckets so buckets are created even if no data is available
+        if starttime and endtime:
+            query_starttime = self.rule_config.get("dt_to_ts", dt_to_ts)(starttime)
+            query_endtime = self.rule_config.get("dt_to_ts", dt_to_ts)(endtime)
+            # Make sure buckets are returned even if no data is available (with count 0)
+            bucket_interval_period = self.rule_config.get("bucket_interval_period")
+            if bucket_interval_period:
+                query_item = self.query
+                if "bucket_aggs" in query_item["aggs"]:
+                    query_item = self.query["aggs"]["bucket_aggs"]
+                if "interval_aggs" in query_item["aggs"]:
+                    query_item["aggs"]["interval_aggs"]["date_histogram"].update(
+                        {
+                            "extended_bounds": {
+                                "min": query_starttime,
+                                # Min Max makes sure that buckets are always created, even if no data is available
+                                # max does not correspondent to timestamp range filter (lte) in elasticsearch
+                                # same with min (qe), elasticsearch does not consider lte and gt with aggregations
+                                # the same as in normal query
+                                # actually using gt in agg query means gte and lte means lt
+                                # so decrementing max is correct here
+                                "max": "{}||-{}".format(
+                                    query_endtime, bucket_interval_period
+                                ),
+                            }
+                        }
+                    )
+        return super().get_hits(starttime, endtime)

@@ -7,18 +7,12 @@ from typing import List, Tuple
 from croniter import croniter
 from elastalert import config
 from elastalert.alerter import DebugAlerter
+from elastalert.config import ESClient
 from elastalert.enhancements.drop_match_exception import DropMatchException
 from elastalert.exceptions import EAException, EARuntimeException
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.utils.elastic import get_aggregation_key_value, get_query_key_value
-from elastalert.utils.time import (
-    dt_to_ts,
-    seconds,
-    total_seconds,
-    ts_now,
-    ts_to_dt,
-    unix_to_dt,
-)
+from elastalert.utils.time import dt_to_ts, seconds, ts_now, ts_to_dt, unix_to_dt
 from elastalert.utils.util import elasticsearch_client, lookup_es_key
 from elasticsearch import ElasticsearchException
 
@@ -43,7 +37,11 @@ class Rule:
         self.cumulative_hits = 0
         self.previous_endtime = None
         if not es:
-            self.es = elasticsearch_client(config.CFG().es_client)
+            if "es_client" in rule_config:
+                es_client_config = ESClient(**rule_config["es_client"])
+            else:
+                es_client_config = config.CFG().es_client
+            self.es = elasticsearch_client(es_client_config)
 
     def process_failed_alerts(self):
         # If there are pending aggregate matches, try processing them

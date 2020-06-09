@@ -16,10 +16,6 @@ Rule Configuration Cheat Sheet
 +--------------------------------------------------------------------------+
 |              FOR ALL RULES                                               |
 +==============================================================+===========+
-| ``es_host`` (string)                                         |  Required |
-+--------------------------------------------------------------+           |
-| ``es_port`` (number)                                         |           |
-+--------------------------------------------------------------+           |
 | ``index`` (string)                                           |           |
 +--------------------------------------------------------------+           |
 | ``type`` (string)                                            |           |
@@ -30,21 +26,9 @@ Rule Configuration Cheat Sheet
 +--------------------------------------------------------------+           |
 | ``use_strftime_index`` (boolean, default False)              |  Optional |
 +--------------------------------------------------------------+           |
-| ``use_ssl`` (boolean, default False)                         |           |
-+--------------------------------------------------------------+           |
-| ``verify_certs`` (boolean, default True)                     |           |
-+--------------------------------------------------------------+           |
-| ``es_username`` (string, no default)                         |           |
-+--------------------------------------------------------------+           |
-| ``es_password`` (string, no default)                         |           |
-+--------------------------------------------------------------+           |
-| ``es_url_prefix`` (string, no default)                       |           |
-+--------------------------------------------------------------+           |
-| ``es_send_get_body_as`` (string, default "GET")              |           |
+| ``es_client`` (es_client object)                             |           |
 +--------------------------------------------------------------+           |
 | ``aggregation`` (time, no default)                           |           |
-+--------------------------------------------------------------+           |
-| ``description`` (string, default empty string)               |           |
 +--------------------------------------------------------------+           |
 | ``generate_kibana_link`` (boolean, default False)            |           |
 +--------------------------------------------------------------+           |
@@ -79,10 +63,6 @@ Rule Configuration Cheat Sheet
 | ``exponential_realert`` (time, no default)                   |           |
 +--------------------------------------------------------------+           |
 | ``match_enhancements`` (list of strs, no default)            |           |
-+--------------------------------------------------------------+           |
-| ``top_count_number`` (int, default 5)                        |           |
-+--------------------------------------------------------------+           |
-| ``top_count_keys`` (list of strs)                            |           |
 +--------------------------------------------------------------+           |
 | ``raw_count_keys`` (boolean, default True)                   |           |
 +--------------------------------------------------------------+           |
@@ -200,18 +180,6 @@ The following configuration settings are common to all types of rules.
 Required Settings
 ~~~~~~~~~~~~~~~~~
 
-es_host
-^^^^^^^
-
-``es_host``: The hostname of the Elasticsearch cluster the rule will use to query. (Required, string, no default)
-The environment variable ``ES_HOST`` will override this field.
-
-es_port
-^^^^^^^
-
-``es_port``: The port of the Elasticsearch cluster. (Required, number, no default)
-The environment variable ``ES_PORT`` will override this field.
-
 index
 ^^^^^
 
@@ -237,16 +205,23 @@ alert
 ``alert``: The ``Alerter`` type to use. This may be one or more of the built in alerts, see :ref:`Alert Types <alerts>` section below for more information,
 or loaded from a module. For loading from a module, the alert should be specified as ``module.file.AlertName``. (Required, string or list, no default)
 
-Optional Settings
-~~~~~~~~~~~~~~~~~
+Elasticsearch Client
+~~~~~~~~~~~~~~~~~~~~
 
-import
-^^^^^^
+``es_client``: A configuration container which includes the es_* settings which are described below. It includes configuration for the communication with elasticsearch. It is an optional setting for the rules, if configured in the main configuration file. Rule settings take precedence over main configuration file settings.
 
-``import``: If specified includes all the settings from this yaml file. This allows common config options to be shared. Note that imported files that aren't
-complete rules should not have a ``.yml`` or ``.yaml`` suffix so that ElastAlert doesn't treat them as rules. Filters in imported files are merged (ANDed)
-with any filters in the rule. You can only have one import per rule, though the imported file can import another file, recursively. The filename
-can be an absolute path or relative to the rules directory. (Optional, string, no default)
+
+es_host
+^^^^^^^
+
+``es_host``: The hostname of the Elasticsearch cluster the rule will use to query. (Required, string, no default)
+The environment variable ``ES_HOST`` will override this field.
+
+es_port
+^^^^^^^
+
+``es_port``: The port of the Elasticsearch cluster. (Required, number, no default)
+The environment variable ``ES_PORT`` will override this field.
 
 use_ssl
 ^^^^^^^
@@ -303,6 +278,17 @@ If a query spans multiple days, the formatted indexes will be concatenated with 
 as narrowing the number of indexes searched, compared to using a wildcard, may be significantly faster. For example, if ``index`` is
 ``logstash-%Y.%m.%d``, the query url will be similar to ``elasticsearch.example.com/logstash-2015.02.03/...`` or
 ``elasticsearch.example.com/logstash-2015.02.03,logstash-2015.02.04/...``.
+
+Optional Settings
+~~~~~~~~~~~~~~~~~
+
+import
+^^^^^^
+
+``import``: If specified includes all the settings from this yaml file. This allows common config options to be shared. Note that imported files that aren't
+complete rules should not have a ``.yml`` or ``.yaml`` suffix so that ElastAlert doesn't treat them as rules. Filters in imported files are merged (ANDed)
+with any filters in the rule. You can only have one import per rule, though the imported file can import another file, recursively. The filename
+can be an absolute path or relative to the rules directory. (Optional, string, no default)
 
 search_extra_index
 ^^^^^^^^^^^^^^^^^^
@@ -447,28 +433,8 @@ include
 ^^^^^^^
 
 ``include``: A list of terms that should be included in query results and passed to rule types and alerts. When set, only those
-fields, along with '@timestamp', ``query_key``, ``compare_key``, and ``top_count_keys``  are included, if present.
+fields, along with '@timestamp', ``query_key`` and ``compare_key`` are included, if present.
 (Optional, list of strings, default all fields)
-
-top_count_keys
-^^^^^^^^^^^^^^
-
-``top_count_keys``: A list of fields. ElastAlert will perform a terms query for the top X most common values for each of the fields,
-where X is 5 by default, or ``top_count_number`` if it exists.
-For example, if ``num_events`` is 100, and ``top_count_keys`` is ``- "username"``, the alert will say how many of the 100 events
-have each username, for the top 5 usernames. When this is computed, the time range used is from ``timeframe`` before the most recent event
-to 10 minutes past the most recent event. Because ElastAlert uses an aggregation query to compute this, it will attempt to use the
-field name plus ".raw" to count unanalyzed terms. To turn this off, set ``raw_count_keys`` to false.
-
-top_count_number
-^^^^^^^^^^^^^^^^
-
-``top_count_number``: The number of terms to list if ``top_count_keys`` is set. (Optional, integer, default 5)
-
-raw_count_keys
-^^^^^^^^^^^^^^
-
-``raw_count_keys``: If true, all fields in ``top_count_keys`` will have ``.raw`` appended to them. (Optional, boolean, default true)
 
 description
 ^^^^^^^^^^^
@@ -1279,6 +1245,105 @@ See: https://docs.python.org/3.4/library/string.html#format-specification-mini-l
 
 ``min_denominator``: Minimum number of documents on which percentage calculation will apply. Default is 0.
 
+Maas
+~~~~~~~~~~~~~~~~
+
+
+``maas``: This rule matches anything but will use an external model to determine if an alert should be generated.
+Maas (model-as-a-service) opens the possibility to attach external services via REST. Currently only mlflow models
+are supported. Examples for external models can be found in example_maas/maas_models/{sklearn_svm_one/sklearn_lof/loglizer}.
+See mlflow on how to serve the models.
+
+This rule requires:
+
+A configuration node ``maas`` which includes the properties:
+
+``endpoint``: The endpoint to which to send the data for predictions of anomaly.
+
+``type``: The type of the Maas-Service. Only ``mlflow`` (mlflow.org) is supported for now.
+
+``columns_mapping``: Describes which columns from the data source should be considered from the datasource and
+maps the columns to new names if necessary. Also allows the possibility to modify the data with predefined functions.
+The configuration option below ``columns_mapping`` is structured as an array with the following fields:
+
+- ``name``: The column name from the data source (Mandatory).
+- ``map_to``: The column name to map the column to (Mandatory).
+- ``function``: The function used to modify the data (Optional).
+
+Following values are possible for the function option:
+
+- ``ts_to_dt``: Converts a timestamp in string format to python datetime.
+- ``unix_to_dt``: Converts a unix timestamp to python datetime.
+- ``unixms_to_dt``: Converts a unix timestamp which includes milliseconds to a python datetime.
+
+
+The type ``mlflow`` requires a mlflow served model. As an input a pandas dataframe in json format is required
+(to_json(orient=split)). Datetime data is converted to ISO8601 format before sending.
+The response of the external model should either supply a list of values in predictions or a list of tuples.
+In case tuples are returned from the external service, the second element will be used to filter out
+data in the matches. The index of each element in the response corresponds the index in the request to the external model and the
+value signals if an anomaly was found or not. Per default the returned value 1 means, that an anomaly was found. The other
+values which do not match the anomaly discriminator are removed from the resultset.
+The data which matches the filter_condition (default=equals) and filter_value (default=1) will then generate alerts.
+
+Optional parameters (under the configuration node maas):
+
+``filter_condition``: Which condition should be used to filter the response.
+
+Possible values:
+
+- ``equals``: Values in List are compared to ``filter_value`` using the equals operator.
+- ``greater``: Values in List are compared to ``filter_value`` using the greater operator.
+- ``greater_equals``: Values in List are compared to ``filter_value`` using the greater or equals operator.
+- ``lower``: Values in List are compared to ``filter_value`` using the lower operator.
+- ``lower_equals``: Values in List are compared to ``filter_value`` using the lower or equals operator.
+
+``filter_value``: Which value should be used in combination to the condition to filter out the value.
+
+
+Maas-Aggregation
+~~~~~~~~~~~~~~~~
+
+``maas_aggregation``: This rule builds aggregations, with the same configuration options as the rule
+``metric_aggregation``, but instead of comparing the data to predefined limits it sends the data to a Maas-Endpoint
+to determine if alerts should be generated. The attachment of the external model requires a configuration of the maas settings.
+See the rule ``maas`` for further instructions on how to configure the maas-settings. An example for the external service
+is included in example_maas/maas_models/prophet. See mlflow on how to use the models.
+
+This rule requires one or a combination of the following:
+
+``bucket_interval``: If present this will divide the metric calculation window into ``bucket_interval`` sized segments. The metric value will
+be calculated and evaluated against the threshold(s) for each segment. If ``bucket_interval`` is specified then ``buffer_time`` must be a
+multiple of ``bucket_interval``. (Or ``run_every`` if ``use_run_every_query_size`` is true).
+
+
+``query_key``: Group metric calculations by this field. For each unique value of the ``query_key`` field, the metric will be calculated and
+evaluated separately against the threshold(s). If combined with ``bucket_interval`` first time buckets are created and then every time bucket is
+splitted again by the query_key (similiar to sql group by).
+
+Optional:
+
+Metric Information:
+``metric_agg_key``: This is the name of the field over which the metric value will be calculated. The underlying type of this field must be
+supported by the specified aggregation type.
+
+``metric_agg_type``: The type of metric aggregation to perform on the ``metric_agg_key`` field. This must be one of 'min', 'max', 'avg',
+'sum', 'cardinality', 'value_count'.
+
+``min_doc_count``: The minimum number of events in the current window needed for an alert to trigger.  Used in conjunction with ``query_key``,
+this will only consider terms which in their last ``buffer_time`` had at least ``min_doc_count`` records.  Default 1.
+
+``use_run_every_query_size``: By default the metric value is calculated over a ``buffer_time`` sized window. If this parameter is true
+the rule will use ``run_every`` as the calculation window.
+
+``sync_bucket_interval``: This only has an effect if ``bucket_interval`` is present. If true it will sync the start and end times of the metric
+calculation window to the keys (timestamps) of the underlying date_histogram buckets. Because of the way elasticsearch calculates date_histogram
+bucket keys these usually round evenly to nearest minute, hour, day etc (depending on the bucket size). By default the bucket keys are offset to
+allign with the time elastalert runs, (This both avoid calculations on partial data, and ensures the very latest documents are included).
+See: https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-datehistogram-aggregation.html#_offset for a
+more comprehensive explaination.
+
+
 .. _alerts:
 
 Alerts
@@ -1356,9 +1421,6 @@ There are several ways to format the body text of the various types of events. I
     rule_name           = name
     alert_text          = alert_text
     ruletype_text       = Depends on type
-    top_counts_header   = top_count_key, ":"
-    top_counts_value    = Value, ": ", Count
-    top_counts          = top_counts_header, LF, top_counts_value
     field_values        = Field, ": ", Value
 
 Similarly to ``alert_subject``, ``alert_text`` can be further formatted using standard Python formatting syntax.
@@ -1372,8 +1434,6 @@ By default::
                           [alert_text]
 
                           ruletype_text
-
-                          {top_counts}
 
                           {field_values}
 
@@ -1391,8 +1451,6 @@ With ``alert_text_type: exclude_fields``::
 
                           ruletype_text
 
-                          {top_counts}
-
 With ``alert_text_type: aggregation_summary_only``::
 
     body                = rule_name
@@ -1402,7 +1460,7 @@ With ``alert_text_type: aggregation_summary_only``::
 ruletype_text is the string returned by RuleType.get_match_str.
 
 field_values will contain every key value pair included in the results from Elasticsearch. These fields include "@timestamp" (or the value of ``timestamp_field``),
-every key in ``include``, every key in ``top_count_keys``, ``query_key``, and ``compare_key``. If the alert spans multiple events, these values may
+every key in ``include``, ``query_key``, and ``compare_key``. If the alert spans multiple events, these values may
 come from an individual event, usually the one which triggers the alert.
 
 When using ``alert_text_args``, you can access nested fields and index into arrays. For example, if your match was ``{"data": {"ips": ["127.0.0.1", "12.34.56.78"]}}``, then by using ``"data.ips[1]"`` in ``alert_text_args``, it would replace value with ``"12.34.56.78"``. This can go arbitrarily deep into fields and will still work on keys that contain dots themselves.

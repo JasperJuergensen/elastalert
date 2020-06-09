@@ -1,0 +1,30 @@
+alert:
+- debug
+description: TestRule that alerts quite often
+filter:
+- query:
+    query_string:
+      query: (process_path.keyword:(*\\svchost.exe))
+index: logs-endpoint-winevent-sysmon-*
+include:
+  - process_path
+  - event_id
+name: Windows-Suspicious-Powershell-commands_0
+buffer_time:
+  seconds: 20
+bucket_interval:
+  seconds: 10
+sync_bucket_interval: True
+query_key: event_id
+metric_agg_key: event_id
+metric_agg_type: avg
+min_doc_count: 0
+maas:
+  endpoint: http://localhost:5001/invocations
+  type: mlflow
+  filter_condition: greater
+  filter_value: 1.3
+priority: 2
+realert:
+  minutes: 0
+type: maas_aggregation

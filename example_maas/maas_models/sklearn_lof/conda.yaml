@@ -1,0 +1,14 @@
+name: sklearn-lof
+channels:
+  - defaults
+  - anaconda
+  - conda-forge
+dependencies:
+  - pip
+  - python=3.7
+  - pandas
+  - numpy
+  - scikit-learn=0.22
+  - elasticsearch-dsl
+  - pip:
+    - mlflow>=1.8

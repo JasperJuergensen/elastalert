@@ -9,13 +9,7 @@ import pytz
 from elastalert import config
 from elastalert.clients import ElasticSearchClient
 from elastalert.exceptions import EAException, EARuntimeException
-from elastalert.utils.time import (
-    dt_to_unix,
-    total_seconds,
-    ts_now,
-    ts_to_dt,
-    unix_to_dt,
-)
+from elastalert.utils.time import ts_now, ts_to_dt
 from elasticsearch import ElasticsearchException
 from six import string_types
 
@@ -84,7 +78,6 @@ def _find_es_dict_by_key(lookup_dict, term):
     #  {'foo.bar': {'bar': 'ray'}} to look up foo.bar will return {'bar': 'ray'}, not 'ray'
     dict_cursor = lookup_dict
 
-    subkey = ""
     while term:
         split_results = re.split(r"\[(\d)\]", term, maxsplit=1)
         if len(split_results) == 3:
@@ -94,6 +87,8 @@ def _find_es_dict_by_key(lookup_dict, term):
             sub_term, index, term = split_results + [None, ""]
 
         subkeys = sub_term.split(".")
+
+        subkey = ""
 
         while len(subkeys) > 0:
             if not dict_cursor:

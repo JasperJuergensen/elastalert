@@ -45,6 +45,31 @@ definitions:
       args: *arrayOfString
       short: {type: boolean}
 
+  maas: &maas
+    type: object
+    required: [endpoint, type, columns_mapping]
+    properties:
+      endpoint: {type: string}
+      type: {type: string}
+      filter: {type: string}
+      filter_condition: {type: string}
+      filter_value: {type: number}
+      columns_mapping:  {type: array, items: {
+        type: object, required: [name, map_to],
+        properties: {
+          name: {type: string}, map_to: {type: string}, function: {type: string}}
+      }}
+
+  maas_agg: &maas_agg
+    type: object
+    required: [endpoint, type]
+    properties:
+      endpoint: {type: string}
+      type: {type: string}
+      filter: {type: string}
+      filter_condition: {type: string}
+      filter_value: {type: number}
+
 required: [type, index, alert]
 type: object
 
@@ -93,16 +118,28 @@ oneOf:
     required: [spike_height, spike_type, timeframe]
     properties:
       type: {enum: [spike]}
-      spike_height: {type: number}
+      spike_height: {type: number, minimum: 1}
       spike_type: {enum: ["up", "down", "both"]}
       timeframe: *timeframe
       use_count_query: {type: boolean}
-      doc_type: {type: string}
       use_terms_query: {type: boolean}
       terms_size: {type: integer}
       alert_on_new_data: {type: boolean}
       threshold_ref: {type: integer}
       threshold_cur: {type: integer}
+      ref_window_count: {type: integer, minimum: 1}
+      gap_timeframe: *timeframe
+      spike_ref_metric: {enum: ["percentile", "mean", "median", "standard_deviation", "mad", "interquartile_range", "sum", "min", "max", "fixed"]}
+      spike_ref_metric_args:
+        oneOf:
+          - title: percentile
+            properties:
+              percentile: {type: number, minimum: 0, maximum: 1}
+              params: {type: array, items: [{type: number}, {type: number}, {type: number}, {type: number}]}
+          - title: interquartile_range
+            properties:
+              params: {type: array, items: [{type: number}, {type: number}, {type: number}, {type: number}]}
+
 
   - title: Spike Aggregation
     required: [spike_height, spike_type, timeframe]
@@ -161,6 +198,19 @@ oneOf:
     properties:
       type: {enum: [percentage_match]}
 
+  - title: Model as a Service
+    required: [maas]
+    properties:
+      type: {enum: [maas]}
+      maas: *maas
+
+  - title: Model as a Service Aggregation
+    required: [maas]
+    properties:
+      type: {enum: [maas_aggregation]}
+      maas: *maas_agg
+
+
   - title: Custom Rule from Module
     properties:
       # custom rules include a period in the rule type
@@ -200,6 +250,7 @@ properties:
     additionalProperties: false
     properties:
         download_dashboard: {type: string}
+
 
   include: {type: array, items: {type: string}}
   top_count_keys: {type: array, items: {type: string}}

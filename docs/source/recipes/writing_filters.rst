@@ -147,8 +147,6 @@ The second way is to generate a config file once using the Kibana dashboard. To 
     -----------
 
     name: My Dashboard
-    es_host: elasticsearch.example.com
-    es_port: 14900
     filter:
     - query:
         query_string: {query: '_exists_:log.message'}

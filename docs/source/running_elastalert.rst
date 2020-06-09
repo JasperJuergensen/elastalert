@@ -46,6 +46,11 @@ Next, open up config.yaml.example. In it, you will find several configuration op
 
 ``buffer_time`` is the size of the query window, stretching backwards from the time each query is run. This value is ignored for rules where ``use_count_query`` or ``use_terms_query`` is set to true.
 
+Elasticsearch Client
+~~~~~~~~~~~~~~~~~~~~
+
+``es_client``: A configuration container which includes the es_* settings which are described below. It includes configuration for the communication with elasticsearch. It is an optional setting for the rules, if configured in the main configuration file. Rule settings take precedence over main configuration file settings.
+
 ``es_host`` is the address of an Elasticsearch cluster where ElastAlert will store data about its state, queries run, alerts, and errors. Each rule may also use a different Elasticsearch host to query against.
 
 ``es_port`` is the port corresponding to ``es_host``.
@@ -95,8 +100,6 @@ Creating a Rule
 Each rule defines a query to perform, parameters on what triggers a match, and a list of alerts to fire for each match. We are going to use ``example_rules/example_frequency.yaml`` as a template::
 
     # From example_rules/example_frequency.yaml
-    es_host: elasticsearch.example.com
-    es_port: 14900
     name: Example rule
     type: frequency
     index: logstash-*
@@ -110,8 +113,6 @@ Each rule defines a query to perform, parameters on what triggers a match, and a
     - "email"
     email:
     - "elastalert@example.com"
-
-``es_host`` and ``es_port`` should point to the Elasticsearch cluster we want to query.
 
 ``name`` is the unique name for this rule. ElastAlert will not start if two rules share the same name.
 

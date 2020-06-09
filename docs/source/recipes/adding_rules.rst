@@ -135,8 +135,9 @@ In the rule configuration file, ``example_rules/example_login_rule.yaml``, we ar
 .. code-block:: yaml
 
     name: "Example login rule"
-    es_host: elasticsearch.example.com
-    es_port: 14900
+    es_client:
+      es_host: elasticsearch.example.com
+      es_port: 14900
     type: "elastalert_modules.my_rules.AwesomeRule"
     # Alert if admin, userXYZ or foobaz log in between 8 PM and midnight
     time_start: "20:00"

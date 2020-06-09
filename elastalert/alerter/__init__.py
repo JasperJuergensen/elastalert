@@ -1,3 +1,4 @@
+# flake8: noqa
 from elastalert.alerter.alerter import Alerter
 from elastalert.alerter.alerta_alerter import AlertaAlerter
 from elastalert.alerter.command_alerter import CommandAlerter
@@ -25,3 +26,4 @@ from elastalert.alerter.telegram_alerter import TelegramAlerter
 from elastalert.alerter.twilio_alerter import TwilioAlerter
 from elastalert.alerter.victor_ops_alerter import VictorOpsAlerter
 from elastalert.alerter.zabbix_alerter import ZabbixAlerter
+from elastalert.alerter.test_alerter import TestAlerter
