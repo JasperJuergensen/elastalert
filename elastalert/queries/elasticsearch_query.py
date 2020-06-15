@@ -360,13 +360,16 @@ class ElasticsearchTermQuery(ElasticsearchQuery):
 
     def build_query(self, **kwargs):
         super().build_query(False)
-        key_with_postfix = add_raw_postfix(self.rule_config["query_key"], True)
+        if self.rule_config.get("raw_query_key", True):
+            key = self.rule_config["query_key"], True
+        else:
+            key = add_raw_postfix(self.rule_config["query_key"], True)
         self.query.update(
             {
                 "aggs": {
                     "counts": {
                         "terms": {
-                            "field": key_with_postfix,
+                            "field": key,
                             "size": self.rule_config.get("terms_size", 50),
                             "min_doc_count": self.rule_config.get("min_doc_count", 1),
                         }
@@ -523,11 +526,12 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
 
         if self.rule_config.get("query_key"):
             for key in reversed(self.rule_config["query_key"].split(",")):
-                key_with_postfix = add_raw_postfix(key, True)
+                if not self.rule_config.get("raw_query_key", False):
+                    key = add_raw_postfix(key, True)
                 aggs_element = {
                     "bucket_aggs": {
                         "terms": {
-                            "field": key_with_postfix,
+                            "field": key,
                             "size": self.rule_config.get("terms_size", 50),
                             "min_doc_count": self.rule_config.get("min_doc_count", 1),
                         },
@@ -629,8 +633,8 @@ class ElasticsearchMaasAggregationQuery(ElasticsearchAggregationQuery):
             bucket_interval_period = self.rule_config.get("bucket_interval_period")
             if bucket_interval_period:
                 query_item = self.query
-                if "bucket_aggs" in query_item["aggs"]:
-                    query_item = self.query["aggs"]["bucket_aggs"]
+                while "bucket_aggs" in query_item["aggs"]:
+                    query_item = query_item["aggs"]["bucket_aggs"]
                 if "interval_aggs" in query_item["aggs"]:
                     query_item["aggs"]["interval_aggs"]["date_histogram"].update(
                         {

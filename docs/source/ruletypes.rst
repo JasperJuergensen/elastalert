@@ -64,7 +64,7 @@ Rule Configuration Cheat Sheet
 +--------------------------------------------------------------+           |
 | ``match_enhancements`` (list of strs, no default)            |           |
 +--------------------------------------------------------------+           |
-| ``raw_count_keys`` (boolean, default True)                   |           |
+| ``raw_query_key`` (boolean, default False)                   |           |
 +--------------------------------------------------------------+           |
 | ``include`` (list of strs, default ["*"])                    |           |
 +--------------------------------------------------------------+           |
@@ -397,6 +397,14 @@ query_delay
 
 ``query_delay``: This option will cause ElastAlert to subtract a time delta from every query, causing the rule to run with a delay.
 This is useful if the data is Elasticsearch doesn't get indexed immediately. (Optional, time)
+
+raw_query_key
+^^^^^^^^^^^
+
+``raw_query_key``: This option will cause ElastAlert to use the raw ``query_key``, for querying terms data.
+For optimizing the speed a .keyword mapping should be created for each field, which is used as a ``query_key`` component.
+If the field.keyword is not available, this option can be used to use the raw field (instead of field.keyword)
+for executing the terms query with the ``query_key``. (Optional, boolean, default value False)
 
 owner
 ^^^^^

@@ -92,8 +92,10 @@ class MlflowClient(MaasClient):
         if type(data) != list:
             raise EAException("Expected a list of dictionaries to send to the Maas.")
 
-        pandas_df = DataFrame(data)
+        if not data:
+            return MaasResponse.from_list([])
 
+        pandas_df = DataFrame(data)
         # rename the columns so it aligns to the external model
         if self.columns_rename:
             pandas_df.rename(columns=self.columns_rename, inplace=True)

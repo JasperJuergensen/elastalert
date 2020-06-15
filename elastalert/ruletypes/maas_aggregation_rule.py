@@ -3,6 +3,7 @@ from elastalert.queries.elasticsearch_query import ElasticsearchMaasAggregationQ
 from elastalert.queries.query_factory import QueryFactory
 from elastalert.ruletypes.base_aggregation_rule import BaseAggregationRule
 from elastalert.utils.maas_filter import FilterMapper
+from elastalert.utils.time import ts_to_dt
 
 
 class MaasAggregationRule(BaseAggregationRule):
@@ -120,25 +121,34 @@ class MaasAggregationRule(BaseAggregationRule):
             self.client_req_item.append(match)
 
     def check_matches_recursive(
-        self, timestamp, query_key, aggregation_data, compound_keys, match_data
+        self, timestamp_tmp, query_key, aggregation_data, compound_keys, match_data
     ):
         """
         Recursive execution in case of compound or nested queries to add data for sending to external model.
         """
-        if len(compound_keys) < 1:
-            # shouldn't get to this point, but checking for safety
-            return
 
-        match_data[compound_keys[0]] = aggregation_data["key"]
+        if compound_keys:
+            match_data[compound_keys[0]] = aggregation_data["key"]
         if "bucket_aggs" in aggregation_data:
             for result in aggregation_data["bucket_aggs"]["buckets"]:
                 self.check_matches_recursive(
-                    timestamp, query_key, result, compound_keys[1:], match_data
+                    timestamp_tmp,
+                    query_key,
+                    result,
+                    compound_keys[1:],
+                    match_data.copy(),
+                )
+
+        elif "interval_aggs" in aggregation_data:
+            for result in aggregation_data["interval_aggs"]["buckets"]:
+                timestamp = ts_to_dt(result["key_as_string"])
+                self.check_matches_recursive(
+                    timestamp, query_key, result, compound_keys[1:], match_data.copy()
                 )
 
         else:
             metric_val = aggregation_data[self.metric_key]["value"]
-            match_data[self.ts_field] = timestamp
+            match_data[self.ts_field] = timestamp_tmp
             match_data["count"] = metric_val
 
             # add compound key to payload to allow alerts to trigger for every unique occurence
