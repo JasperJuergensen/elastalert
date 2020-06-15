@@ -1,10 +1,12 @@
 from decimal import Decimal
 from math import ceil, floor
 from statistics import StatisticsError, mean, median, stdev, variance
-from typing import List, Tuple, Union
+from typing import List, Tuple, TypeVar
 
 from elastalert.exceptions import EAException
 from elastalert.utils.util import get_module
+
+Numeric = TypeVar("Numeric", int, float)
 
 
 def fractional_part(x: float) -> float:
@@ -17,11 +19,9 @@ def fractional_part(x: float) -> float:
 
 
 def percentile(
-    data: List[Union[int, float]],
+    data: List[Numeric],
     percentile: float = 0.95,
-    params: Tuple[
-        Union[int, float], Union[int, float], Union[int, float], Union[int, float]
-    ] = (0, 0, 1, 0),
+    params: Tuple[Numeric, Numeric, Numeric, Numeric] = (0, 0, 1, 0),
 ) -> float:
     """
     Calculates the nth percentile of a list of values
@@ -52,7 +52,7 @@ def percentile(
     return data[fl] + (data[ce] - data[fl]) * (c + d * fractional_part(x))
 
 
-def mad(data: List[Union[int, float]]) -> float:
+def mad(data: List[Numeric]) -> float:
     """
     Calculates the median absolute deviation (MAD) of a list of values
     :param data: list of values
@@ -63,10 +63,8 @@ def mad(data: List[Union[int, float]]) -> float:
 
 
 def interquartile_range(
-    data: List[Union[int, float]],
-    params: Tuple[
-        Union[int, float], Union[int, float], Union[int, float], Union[int, float]
-    ] = (0, 0, 1, 0),
+    data: List[Numeric],
+    params: Tuple[Numeric, Numeric, Numeric, Numeric] = (0, 0, 1, 0),
 ) -> float:
     """
     Calculates the interquartile range (q3 - q1) of a list of values

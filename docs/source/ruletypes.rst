@@ -955,7 +955,7 @@ which is a static value of 1. If the value is fixed, the spike height is interpr
 ``spike_heigh_metric_args``: Arguments for the ``spike_height_metric``. The arguments are a mapping (e.g. ``percentile: 0.5``)
 A table with arguments for different metrics is below.
 
-..note:: Available metrics with options
+.. note::
     +---------------------+----------------------------------------------------------------+
     | Metric              | Options                                                        |
     +=====================+================================================================+
@@ -985,19 +985,22 @@ A table with arguments for different metrics is below.
     | fixed               |                                                                |
     +---------------------+----------------------------------------------------------------+
 
-..note:: Percentile parameters ``a, b, c, d``: These parameters are used to calculated the percentile.
+.. note::
+    Percentile parameters ``a, b, c, d``: These parameters are used to calculated the percentile.
     For a sorted list ``s`` of length ``n`` the calculation is as follows:
     The first internal parameter is ``x = a + (n + b) * q`` . If ``x`` is an integer the result is s[x]. Otherwise the result
     is ``s[floor(x)] + (s[ceil(x)] - s[floor(x)]) * (c + d * fractional_part(x))``.
-    The default choice for a, b, c, d = (0, 0, 1, 0). Common choices of parameter include:
-    (0,   0,   1, 0)        inverse empirical CDF (default)
-    (0,   0,   0, 1)        linear interpolation (California method)
-    (1/2, 0,   0, 0)        element numbered closest to q * n
-    (1/2, 0,   0, 1)        linear interpolation (hydrologist method)
-    (0,   1,   0, 1)        mean-based estimate (Weibull method)
-    (1,   -1,  0, 1)        mode-based estimate
-    (1/3, 1/3, 0, 1)        median-based estimate
-    (3/8, 1/4, 0, 1)        normal distribution estimate
+    The default choice for a, b, c, d = (0, 0, 1, 0). Common choices of parameter include::
+
+        (0,   0,   1, 0)        inverse empirical CDF (default)
+        (0,   0,   0, 1)        linear interpolation (California method)
+        (1/2, 0,   0, 0)        element numbered closest to q * n
+        (1/2, 0,   0, 1)        linear interpolation (hydrologist method)
+        (0,   1,   0, 1)        mean-based estimate (Weibull method)
+        (1,   -1,  0, 1)        mode-based estimate
+        (1/3, 1/3, 0, 1)        median-based estimate
+        (3/8, 1/4, 0, 1)        normal distribution estimate
+
     Whenever ``d = 0`` the result is always equal to an element in the list.
     The default params for the quartiles in the interquartile_range are the default parameters of the percentile function.
 
