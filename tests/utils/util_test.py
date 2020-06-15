@@ -1,8 +1,22 @@
 from datetime import datetime, timedelta
+from math import sqrt
+from statistics import StatisticsError, harmonic_mean
+from unittest import TestCase
 
 import mock
 import pytest
 from dateutil.parser import parse as dt
+from elastalert.utils.arithmetic import (
+    Mapping,
+    fractional_part,
+    interquartile_range,
+    mad,
+    mean,
+    median,
+    percentile,
+    stdev,
+    variance,
+)
 from elastalert.utils.util import (
     add_raw_postfix,
     format_index,
@@ -200,3 +214,52 @@ def test_should_scrolling_continue():
     assert should_scrolling_continue(rule_before_first_run) is True
     assert should_scrolling_continue(rule_before_max_scrolling) is True
     assert should_scrolling_continue(rule_over_max_scrolling) is False
+
+
+def test_fractional_part():
+    assert fractional_part(1) == 0
+    assert fractional_part(3.8) == 0.8
+    assert fractional_part(100.1234) == 0.1234
+
+
+def test_percentile():
+    assert percentile([1], 0.25) == 1
+    assert percentile([1], 0.25, (0, 0, 0, 1)) == 1
+    assert percentile([1, 1, 3, 5], 0.3, (0, 0, 0, 1)) == 1
+    assert percentile([1, 1, 3, 5], 0.3, (1 / 2, 0, 0, 0)) == 1
+    assert percentile([1, 1, 3, 5], 0.3, (1 / 2, 0, 0, 1)) == 1
+    assert percentile([1, 1, 3, 5], 0.7, (0, 0, 0, 1)) == 2.6
+    assert percentile([1, 1, 3, 5], 0.7, (1 / 2, 0, 0, 0)) == 3
+    assert percentile([1, 1, 3, 5], 0.7, (1 / 2, 0, 0, 1)) == 3.6
+    assert percentile([1, 1, 3, 5], 0.99, (0, 0, 0, 1)) == 4.92
+    with pytest.raises(StatisticsError):
+        percentile([])
+    with pytest.raises(StatisticsError):
+        percentile([1, 2, 3, 4], 1.1)
+    with pytest.raises(StatisticsError):
+        percentile([1, 2, 3, 4], -0.01)
+
+
+def test_mad():
+    assert mad([1, 2, 3, 4]) == 1
+    assert mad([100]) == 0
+    assert mad([0, 100]) == 50
+    with pytest.raises(StatisticsError):
+        mad([])
+
+
+def test_interquartile_range():
+    assert interquartile_range([1]) == 0
+    assert interquartile_range([1], (0, 0, 0, 1)) == 0
+    assert interquartile_range([1, 1, 3, 5, 4]) == 3
+    assert interquartile_range([1, 1, 3, 5, 4], (0, 0, 0, 1)) == 11 / 4
+    assert interquartile_range([1, 1, 3, 5, 4], (1 / 2, 0, 0, 1)) == 13 / 4
+    assert interquartile_range([1, 1, 3, 5, 4], (1 / 2, 0, 0, 0)) == 3
+    with pytest.raises(StatisticsError):
+        interquartile_range([])
+
+
+def test_arithmetic_mapping():
+    assert Mapping.get("stdev") == stdev
+    assert Mapping.get("not_found", "default") == "default"
+    assert Mapping.get("statistics.harmonic_mean") == harmonic_mean

@@ -16,6 +16,7 @@ from elastalert.ruletypes import (
     MaasRule,
     MetricAggregationRule,
     NewTermsRule,
+    SpikeMetricAggregationRule,
     SpikeRule,
     WhitelistRule,
 )
@@ -1127,7 +1128,7 @@ class RuleTest(unittest.TestCase):
         rule.add_data(
             [{"@timestamp": ts_to_dt("2015"), "foo": {"bar": {"baz": "LOL"}}}]
         )
-        assert "LOL" in rule.cur_windows
+        assert "LOL" in rule.windows
 
     def test_spike(self):
         # Events are 1 per second
@@ -1369,6 +1370,206 @@ class RuleTest(unittest.TestCase):
 
         rule.add_terms_data(terms8)
         assert len(rule.matches) == 0
+
+    def test_spike_gap_timeframe(self):
+        rules = {
+            "spike_height": 2,
+            "gap_timeframe": datetime.timedelta(seconds=30),
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "up",
+            "timestamp_field": "@timestamp",
+        }
+        rule = SpikeRule(rules)
+
+        # Double rate of events at 50 (10 + 30 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:50"): 20})
+        assert len(rule.matches) == 1
+
+    def test_spike_ref_buckets(self):
+        rules = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "ref_window_count": 3,
+            "spike_type": "both",
+            "timestamp_field": "@timestamp",
+        }
+
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 40})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 10})
+        assert len(rule.matches) == 1
+
+        rules["spike_ref_metric"] = "median"
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 40})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 10})
+        assert len(rule.matches) == 1
+
+        rules["spike_ref_metric"] = "min"
+        rule = SpikeRule(rules)
+        # Double rate of events to min ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 20})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to min ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 5})
+
+        rules["spike_ref_metric"] = "max"
+        rule = SpikeRule(rules)
+        # Double rate of events to max ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 60})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to max ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 20})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 30})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 15})
+        assert len(rule.matches) == 1
+
+    def test_spike_ref_buckets_variable_height(self):
+        rules = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "ref_window_count": 3,
+            "spike_ref_metric": "mean",
+            "spike_height_metric": "variance",
+            "spike_type": "both",
+            "timestamp_field": "@timestamp",
+        }
+
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 26})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 0})
+        assert len(rule.matches) == 1
+
+        rules["spike_ref_metric"] = "percentile"
+        rules["spike_ref_metric_args"] = {"percentile": 0.99, "params": (0, 0, 0, 1)}
+        rules["spike_height_metric"] = "interquartile_range"
+        rules["spike_height_metric_args"] = {"params": (0, 0, 0, 1)}
+        rule = SpikeRule(rules)
+        # Double rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 22})
+        assert len(rule.matches) == 1
+        rule = SpikeRule(rules)
+        # Half rate of events to mean ref at 40 (3 * 10 + 10) seconds
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:00"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:10"): 10})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:20"): 15})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:30"): 13})
+        assert len(rule.matches) == 0
+        rule.add_count_data({ts_to_dt("2014-09-26T00:00:40"): 7})
+        assert len(rule.matches) == 1
 
     def test_blacklist(self):
         events = [
@@ -1926,3 +2127,572 @@ class RuleTest(unittest.TestCase):
             datetime.datetime.now(), "qk_val", {"metric_cpu_pct_avg": {"value": 0.95}}
         )
         assert rule.matches[0]["qk"] == "qk_val"
+
+    def test_spike_metric_agg(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {"2014-09-26T00:00:00": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert rule.garbage_collect_count == 1
+        payload = {"2014-09-26T00:00:10": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert rule.garbage_collect_count == 0
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {"2014-09-26T00:00:00": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert rule.garbage_collect_count == 1
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:10": {metric_key: {"value": 20}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert rule.garbage_collect_count == 0
+        assert len(rule.matches) == 1
+
+    def test_spike_metric_agg_query_key(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "query_key": "foo",
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {"key": "bar", metric_key: {"value": 10}},
+                        {"key": "baz", metric_key: {"value": 20}},
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {"key": "bar", metric_key: {"value": 10}},
+                        {"key": "baz", metric_key: {"value": 20}},
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {"key": "bar", metric_key: {"value": 10}},
+                        {"key": "baz", metric_key: {"value": 20}},
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {"key": "bar", metric_key: {"value": 20}},
+                        {"key": "baz", metric_key: {"value": 20}},
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 1
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {"key": "bar", metric_key: {"value": 10}},
+                        {"key": "baz", metric_key: {"value": 20}},
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {"key": "bar", metric_key: {"value": 20}},
+                        {"key": "baz", metric_key: {"value": 40}},
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 2
+
+    def test_spike_metric_agg_multiple_query_keys(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "query_key": ["foo", "foo2"],
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {
+                            "key": "bar",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 10}},
+                                    {"key": "baz2", metric_key: {"value": 15}},
+                                ]
+                            },
+                        },
+                        {
+                            "key": "baz",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 20}},
+                                    {"key": "baz2", metric_key: {"value": 20}},
+                                ]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {
+                            "key": "bar",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 12}},
+                                    {"key": "baz2", metric_key: {"value": 15}},
+                                ]
+                            },
+                        },
+                        {
+                            "key": "baz",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 30}},
+                                    {"key": "baz2", metric_key: {"value": 20}},
+                                ]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {
+                            "key": "bar",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 10}},
+                                    {"key": "baz2", metric_key: {"value": 15}},
+                                ]
+                            },
+                        },
+                        {
+                            "key": "baz",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 20}},
+                                    {"key": "baz2", metric_key: {"value": 20}},
+                                ]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {
+                            "key": "bar",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 25}},
+                                    {"key": "baz2", metric_key: {"value": 15}},
+                                ]
+                            },
+                        },
+                        {
+                            "key": "baz",
+                            "bucket_aggs": {
+                                "buckets": [
+                                    {"key": "bar2", metric_key: {"value": 40}},
+                                    {"key": "baz2", metric_key: {"value": 50}},
+                                ]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 3
+
+    def test_spike_metric_agg_variable_height_basic(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "metric_ref_agg_type": "median_absolute_deviation",
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+        metric_ref_key = "metric_ref_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_ref_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {
+            "2014-09-26T00:00:00": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"value": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"value": 5},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {
+            "2014-09-26T00:00:00": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"value": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                metric_key: {"value": 16},
+                metric_ref_key: {"value": 5},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 1
+
+    def test_spike_metric_agg_variable_height_extended(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "metric_ref_agg_type": "std_deviation",
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+        metric_ref_key = "metric_ref_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_ref_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(copy.deepcopy(rule_config))
+        payload = {
+            "2014-09-26T00:00:00": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 5},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(copy.deepcopy(rule_config))
+        payload = {
+            "2014-09-26T00:00:00": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        payload = {
+            "2014-09-26T00:00:10": {
+                metric_key: {"value": 16},
+                metric_ref_key: {"std_deviation": 5},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 1
+
+    def test_spike_metric_agg_ref_buckets(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "ref_window_count": 3,
+            "spike_ref_metric": "mean",
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {"2014-09-26T00:00:00": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert rule.garbage_collect_count == 1
+        payload = {"2014-09-26T00:00:10": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert rule.garbage_collect_count == 2
+        payload = {"2014-09-26T00:00:20": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:20"))
+        assert rule.garbage_collect_count == 3
+        payload = {"2014-09-26T00:00:30": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:30"))
+        assert rule.garbage_collect_count == 0
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {"2014-09-26T00:00:00": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert rule.garbage_collect_count == 1
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:10": {metric_key: {"value": 14}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert rule.garbage_collect_count == 2
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:20": {metric_key: {"value": 11}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:20"))
+        assert rule.garbage_collect_count == 3
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:30": {metric_key: {"value": 24}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:30"))
+        assert rule.garbage_collect_count == 0
+        assert len(rule.matches) == 1
+
+    def test_spike_metric_agg_ref_buckets_variable_height(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "ref_window_count": 3,
+            "spike_ref_metric": "mean",
+            "spike_height_metric": "stdev",
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {"2014-09-26T00:00:00": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:10": {metric_key: {"value": 11}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:20": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:20"))
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:30": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:30"))
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(rule_config)
+        payload = {"2014-09-26T00:00:00": {metric_key: {"value": 10}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:10": {metric_key: {"value": 14}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:20": {metric_key: {"value": 11}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:20"))
+        assert len(rule.matches) == 0
+        payload = {"2014-09-26T00:00:30": {metric_key: {"value": 16}}}
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:30"))
+        assert len(rule.matches) == 1
+
+    def test_spike_metric_agg_ref_buckets_agg_variable_height(self):
+        rule_config = {
+            "spike_height": 2,
+            "timeframe": datetime.timedelta(seconds=10),
+            "spike_type": "both",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "metric_ref_agg_type": "std_deviation",
+            "spike_ref_metric": "mean",
+            "spike_height_metric": "max",
+            "ref_window_count": 3,
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+        metric_ref_key = "metric_ref_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_ref_agg_type"]
+        )
+
+        rule = SpikeMetricAggregationRule(copy.deepcopy(rule_config))
+        payload = {
+            "2014-09-26T00:00:00": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert len(rule.matches) == 0
+        payload = {
+            "2014-09-26T00:00:10": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+        payload = {
+            "2014-09-26T00:00:20": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:20"))
+        assert len(rule.matches) == 0
+        payload = {
+            "2014-09-26T00:00:30": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:30"))
+        assert len(rule.matches) == 0
+
+        rule = SpikeMetricAggregationRule(copy.deepcopy(rule_config))
+        payload = {
+            "2014-09-26T00:00:00": {
+                metric_key: {"value": 10},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect("2014-09-26T00:00:00")
+        assert len(rule.matches) == 0
+        payload = {
+            "2014-09-26T00:00:10": {
+                metric_key: {"value": 12},
+                metric_ref_key: {"std_deviation": 4},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:10"))
+        assert len(rule.matches) == 0
+        payload = {
+            "2014-09-26T00:00:20": {
+                metric_key: {"value": 11},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:20"))
+        assert len(rule.matches) == 0
+        payload = {
+            "2014-09-26T00:00:30": {
+                metric_key: {"value": 19},
+                metric_ref_key: {"std_deviation": 3},
+            }
+        }
+        rule.add_aggregation_data(payload)
+        rule.garbage_collect(ts_to_dt("2014-09-26T00:00:30"))
+        assert len(rule.matches) == 1

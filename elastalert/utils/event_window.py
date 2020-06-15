@@ -25,20 +25,23 @@ class EventWindow:
         self.data = sortedlist(key=self.get_ts)
         self.running_count = 0
 
+    def clean_old_events(self):
+        """Removes old events"""
+        while self.data and self.duration() >= self.timeframe:
+            oldest = self.data[0]
+            self.data.remove(oldest)
+            self.running_count -= oldest[1]
+            self.on_removed and self.on_removed(oldest)
+
     def append(self, event: Tuple[dict, int]):
         """ Add an event to the window. Event should be of the form (dict, count).
         This will also pop the oldest events and call onRemoved on them until the
         window size is less than timeframe. """
         self.data.add(event)
         self.running_count += event[1]
+        self.clean_old_events()
 
-        while self.duration() >= self.timeframe:
-            oldest = self.data[0]
-            self.data.remove(oldest)
-            self.running_count -= oldest[1]
-            self.on_removed and self.on_removed(oldest)
-
-    def duration(self):
+    def duration(self) -> datetime.timedelta:
         """ Get the size in timedelta of the window. """
         if not self.data:
             return datetime.timedelta(0)
