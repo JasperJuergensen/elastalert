@@ -1,5 +1,3 @@
-from abc import ABC
-
 from elastalert.clients.mlflow_client import MaasClientMapper
 from elastalert.queries.elasticsearch_query import ElasticsearchMaasAggregationQuery
 from elastalert.queries.query_factory import QueryFactory
@@ -7,7 +5,7 @@ from elastalert.ruletypes.base_aggregation_rule import BaseAggregationRule
 from elastalert.utils.maas_filter import FilterMapper
 
 
-class MaasAggregationRule(BaseAggregationRule, ABC):
+class MaasAggregationRule(BaseAggregationRule):
     """
     Aggregation Rule, which sends aggregated results to an external Model to get anomaly information.
     """

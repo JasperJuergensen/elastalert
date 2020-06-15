@@ -50,8 +50,10 @@ class ValueFilter(Filter):
 
     @property
     def condition_mapper(self):
+
         return {
             "equals": (operator.eq, None),
+            "not_equals": (operator.ne, None),
             "greater": (operator.gt, float),
             "lower": (operator.lt, float),
             "lower_equals": (operator.le, float),
