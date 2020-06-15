@@ -927,7 +927,7 @@ A table with arguments for different metrics is below.
     +=====================+================================================================+
     | percentile          | ``percentile`` (float between 0 and 1, default: 0.95) optional |
     |                     | ``params`` These parameters (a,b,c,d) are used to calculate    |
-    |                     |     the percentile. See below for more info.                   |
+    |                     | the percentile. See below for more info.                       |
     +---------------------+----------------------------------------------------------------+
     | mean                | Uses the mean function from the python statistics module       |
     +---------------------+----------------------------------------------------------------+
@@ -1302,7 +1302,7 @@ A table with arguments for different metrics is below.
     +=====================+================================================================+
     | percentile          | ``percentile`` (float between 0 and 1, default: 0.95) optional |
     |                     | ``params`` These parameters (a,b,c,d) are used to calculate    |
-    |                     |     the percentile. See below for more info.                   |
+    |                     | the percentile. See below for more info.                       |
     +---------------------+----------------------------------------------------------------+
     | mean                | Uses the mean function from the python statistics module       |
     +---------------------+----------------------------------------------------------------+
