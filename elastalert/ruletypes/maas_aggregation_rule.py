@@ -149,3 +149,6 @@ class MaasAggregationRule(BaseAggregationRule):
                 [str(value) for value in compound_value]
             )
             self.client_req_item.append(match_data)
+
+    def garbage_collect(self, timestamp):
+        pass

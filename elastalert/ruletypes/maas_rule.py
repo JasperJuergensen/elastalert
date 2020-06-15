@@ -40,3 +40,6 @@ class MaasRule(RuleType):
         ]
         for match in matches:
             self.add_match(match)
+
+    def garbage_collect(self, timestamp):
+        pass

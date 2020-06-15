@@ -116,3 +116,6 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
 
     def check_matches(self, timestamp, query_key, aggregation_data):
         raise NotImplementedError
+
+    def garbage_collect(self, timestamp):
+        pass

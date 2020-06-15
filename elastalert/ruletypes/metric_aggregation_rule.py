@@ -108,3 +108,6 @@ class MetricAggregationRule(BaseAggregationRule):
         if "min_threshold" in self.rules and metric_value < self.rules["min_threshold"]:
             return True
         return False
+
+    def garbage_collect(self, timestamp):
+        pass

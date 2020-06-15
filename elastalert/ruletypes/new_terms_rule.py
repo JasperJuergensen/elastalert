@@ -334,3 +334,6 @@ class NewTermsRule(RuleType):
     def is_five_or_above(self):
         version = self.es.info()["version"]["number"]
         return int(version[0]) >= 5
+
+    def garbage_collect(self, timestamp):
+        pass

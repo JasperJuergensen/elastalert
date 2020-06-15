@@ -78,3 +78,6 @@ class PercentageMatchRule(BaseAggregationRule):
             "min_percentage" in self.rules
             and match_percentage < self.rules["min_percentage"]
         )
+
+    def garbage_collect(self, timestamp):
+        pass
