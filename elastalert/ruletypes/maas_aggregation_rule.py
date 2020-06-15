@@ -121,7 +121,7 @@ class MaasAggregationRule(BaseAggregationRule):
             self.client_req_item.append(match)
 
     def check_matches_recursive(
-        self, timestamp_tmp, query_key, aggregation_data, compound_keys, match_data
+        self, timestamp, query_key, aggregation_data, compound_keys, match_data
     ):
         """
         Recursive execution in case of compound or nested queries to add data for sending to external model.
@@ -132,11 +132,7 @@ class MaasAggregationRule(BaseAggregationRule):
         if "bucket_aggs" in aggregation_data:
             for result in aggregation_data["bucket_aggs"]["buckets"]:
                 self.check_matches_recursive(
-                    timestamp_tmp,
-                    query_key,
-                    result,
-                    compound_keys[1:],
-                    match_data.copy(),
+                    timestamp, query_key, result, compound_keys[1:], match_data.copy(),
                 )
 
         elif "interval_aggs" in aggregation_data:
@@ -148,7 +144,7 @@ class MaasAggregationRule(BaseAggregationRule):
 
         else:
             metric_val = aggregation_data[self.metric_key]["value"]
-            match_data[self.ts_field] = timestamp_tmp
+            match_data[self.ts_field] = timestamp
             match_data["count"] = metric_val
 
             # add compound key to payload to allow alerts to trigger for every unique occurence
