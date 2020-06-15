@@ -43,12 +43,13 @@ class RuleType(Rule, metaclass=ABCMeta):
 
         :param event: The matching event, a dictionary of terms.
         """
+        event = copy.deepcopy(event)
         # Convert datetime's back to timestamps
         ts = self.rules.get("timestamp_field")
         if ts in event:
             event[ts] = dt_to_ts(event[ts])
 
-        self.matches.append(copy.deepcopy(event))
+        self.matches.append(event)
 
     def get_match_str(self, match):
         """ Returns a string that gives more context about a match.

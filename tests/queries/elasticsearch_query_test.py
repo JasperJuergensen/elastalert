@@ -1,5 +1,3 @@
-from unittest import TestCase
-
 from elastalert.queries.elasticsearch_query import ElasticsearchQuery
 
 
