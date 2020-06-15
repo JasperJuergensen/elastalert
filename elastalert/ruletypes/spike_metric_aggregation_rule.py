@@ -1,12 +1,12 @@
-from elastalert.exceptions import EAException
-from elastalert.ruletypes.base_aggregation_rule import BaseAggregationRule
-from elastalert.ruletypes.spike_rule import SpikeRule
+from elastalert.exceptions import EAConfigException
+from elastalert.queries.elasticsearch_query import ElasticsearchSpikeAggregationQuery
+from elastalert.queries.query_factory import QueryFactory
+from elastalert.ruletypes import RuleType
+from elastalert.utils import arithmetic
 from elastalert.utils.time import pretty_ts
 
 
-# TODO there is probably a problem with multiple inheritance
-class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
-    """ A rule that matches when there is a spike in an aggregated event compared to its reference point """
+class SpikeMetricAggregationRule(RuleType):
 
     required_options = frozenset(
         ["metric_agg_key", "metric_agg_type", "spike_height", "spike_type"]
@@ -14,60 +14,87 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
     allowed_aggregations = frozenset(
         ["min", "max", "avg", "sum", "cardinality", "value_count"]
     )
+    allowed_ref_aggregations = frozenset(
+        ["min", "max", "variance", "std_deviation", "median_absolute_deviation"]
+    )
+    # TODO median and percentiles
 
-    def __init__(self, *args, **kwargs):
-        # We inherit everything from BaseAggregation and Spike, overwrite only what we need in functions below
-        super(SpikeMetricAggregationRule, self).__init__(*args, **kwargs)
+    def __init__(self, rule_config, *args, **kwargs):
+        super().__init__(rule_config, *args, **kwargs)
+        self.timeframe = self.rule_config["timeframe"]
+        self.ts_field = self.rules.get("timestamp_field", "@timestamp")
+        self.data_field = "value"
 
-        # MetricAgg alert things
-        self.metric_key = (
-            "metric_"
-            + self.rules["metric_agg_key"]
-            + "_"
-            + self.rules["metric_agg_type"]
-        )
-        if self.rules["metric_agg_type"] not in self.allowed_aggregations:
-            raise EAException(
+        if self.rule_config["metric_agg_type"] not in self.allowed_aggregations:
+            raise EAConfigException(
                 "metric_agg_type must be one of %s" % (str(self.allowed_aggregations))
             )
-
-        # Disabling bucket intervals (doesn't make sense in context of spike to split up your time period)
-        if self.rules.get("bucket_interval"):
-            raise EAException(
-                "bucket intervals are not supported for spike aggregation alerts"
+        if (
+            self.rule_config.get("metric_ref_agg_type")
+            and self.rule_config["metric_ref_agg_type"]
+            not in self.allowed_ref_aggregations
+        ):
+            raise EAConfigException(
+                "metric_ref_agg_type must be one of %s"
+                % (str(self.allowed_ref_aggregations))
             )
 
-        self.rules["aggregation_query_element"] = self.generate_aggregation_query()
+        self.ref_window_count = self.rule_config.get("ref_window_count", 1)
+        self.spike_ref_metric = arithmetic.Mapping.get(
+            self.rule_config.get("spike_ref_metric", "mean")
+        )
+        self.spike_ref_metric_args = self.rule_config.get(
+            "spike_ref_metric_args", dict()
+        )
+        self.spike_height_metric = arithmetic.Mapping.get(
+            self.rule_config.get("spike_height_metric", "fixed"), lambda ref: ref[0]
+        )
+        self.spike_height_metric_args = self.rule_config.get(
+            "spike_height_metric_args", dict()
+        )
+        if (
+            self.rule_config.get("spike_height_metric", "fixed") != "fixed"
+            and self.ref_window_count == 1
+        ):
+            raise EAConfigException(
+                "If spike_height_ref is set to something other than fixed, ref_count must be > 1"
+            )
 
-    def generate_aggregation_query(self):
-        """Lifted from MetricAggregationRule, added support for scripted fields"""
-        if self.rules.get("metric_agg_script"):
-            return {
-                self.metric_key: {
-                    self.rules["metric_agg_type"]: self.rules["metric_agg_script"]
-                }
-            }
-        return {
-            self.metric_key: {
-                self.rules["metric_agg_type"]: {"field": self.rules["metric_agg_key"]}
-            }
-        }
+        self.windows = dict()
+        self.metric_key = (
+            "metric_"
+            + self.rule_config["metric_agg_key"]
+            + "_"
+            + self.rule_config["metric_agg_type"]
+        )
+        self.metric_ref_key = (
+            "metric_ref_"
+            + self.rule_config["metric_agg_key"]
+            + "_"
+            + self.rule_config.get("metric_ref_agg_type", "fixed")
+        )
+
+        if self.rule_config.get("metric_ref_agg_type") and self.rule_config[
+            "metric_ref_agg_type"
+        ] in ["variance", "std_deviation"]:
+            self.data_field = self.rule_config["metric_ref_agg_type"]
+            self.rule_config["metric_ref_agg_type"] = "extended_stats"
+
+        self.rule_config[
+            "aggregation_query_element"
+        ] = self.generate_aggregation_query()
+        self.garbage_collect_count = 0
 
     def add_aggregation_data(self, payload):
-        """
-        BaseAggregationRule.add_aggregation_data unpacks our results and runs checks directly against hardcoded cutoffs.
-        We instead want to use all of our SpikeRule.handle_event inherited logic (current/reference) from
-        the aggregation's "value" key to determine spikes from aggregations
-        """
         for timestamp, payload_data in payload.items():
             if "bucket_aggs" in payload_data:
                 self.unwrap_term_buckets(timestamp, payload_data["bucket_aggs"])
             else:
-                # no time / term split, just focus on the agg
-                event = {self.ts_field: timestamp}
                 agg_value = payload_data[self.metric_key]["value"]
-                self.handle_event(event, agg_value, "all")
-        return
+                ref_agg_value = payload_data.get(self.metric_ref_key, {}).get(
+                    self.data_field, agg_value
+                )
+                self.windows.setdefault("all", []).append((agg_value, ref_agg_value))
 
     def unwrap_term_buckets(self, timestamp, term_buckets, qk=[]):
         """
@@ -86,13 +113,88 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
 
             qk_str = ",".join(qk)
             agg_value = term_data[self.metric_key]["value"]
-            event = {self.ts_field: timestamp, self.rules["query_key"]: qk_str}
-            # pass to SpikeRule's tracker
-            self.handle_event(event, agg_value, qk_str)
+            ref_agg_value = term_data.get(self.metric_ref_key, {}).get(
+                self.data_field, agg_value
+            )
+            self.windows.setdefault(qk_str, []).append((agg_value, ref_agg_value))
 
             # handle unpack of lowest level
             del qk[-1]
-        return
+
+    def init_query_factory(self) -> QueryFactory:
+        return QueryFactory(
+            ElasticsearchSpikeAggregationQuery,
+            self.rule_config,
+            self.add_aggregation_data,
+            self.es,
+        )
+
+    def generate_aggregation_query(self) -> dict:
+        """"""
+        query = {}
+        if self.rule_config.get("metric_agg_script"):
+            query[self.metric_key] = {
+                self.rules["metric_agg_type"]: self.rule_config["metric_agg_script"]
+            }
+        else:
+            query[self.metric_key] = {
+                self.rule_config["metric_agg_type"]: {
+                    "field": self.rule_config["metric_agg_key"]
+                }
+            }
+        if self.rule_config.get("metric_ref_agg_type"):
+            query[self.metric_ref_key] = {
+                self.rule_config["metric_ref_agg_type"]: {
+                    "field": self.rule_config["metric_agg_key"]
+                }
+            }
+        return query
+
+    def garbage_collect(self, timestamp):
+        if self.garbage_collect_count < self.ref_window_count:
+            # we don't have all data
+            self.garbage_collect_count += 1
+        else:
+            for qk, window_data in self.windows.items():
+                cur = window_data[-1][0]
+                refs, ref_aggs = map(list, zip(*window_data[:-1]))
+                ref = self.spike_ref_metric(refs, **self.spike_ref_metric_args)
+                ref_metric = self.spike_height_metric(
+                    ref_aggs, **self.spike_height_metric_args
+                )
+                if cur < self.rules.get("threshold_cur", 0) or ref < self.rules.get(
+                    "threshold_ref", 0
+                ):
+                    return
+                if (
+                    self.rule_config.get("spike_height_metric", "fixed") == "fixed"
+                    and self.rule_config.get("metric_ref_agg_type") is None
+                ):
+                    up_ref_value = ref * self.rule_config["spike_height"]
+                    down_ref_value = ref / self.rule_config["spike_height"]
+                else:
+                    up_ref_value = ref + ref_metric * self.rule_config["spike_height"]
+                    down_ref_value = ref - (
+                        ref_metric * self.rule_config["spike_height"]
+                    )
+                if (
+                    self.rule_config["spike_type"] in ["both", "up"]
+                    and cur >= up_ref_value
+                ) or (
+                    self.rule_config["spike_type"] in ["both", "down"]
+                    and cur <= down_ref_value
+                ):
+                    match = {
+                        "spike_count": cur,
+                        "reference_count": ref,
+                        "reference_metric_value": ref_metric,
+                        self.ts_field: timestamp,
+                    }
+                    self.add_match(match)
+
+            # clear window information
+            self.windows = {}
+            self.garbage_collect_count = 0
 
     def get_match_str(self, match):
         """
@@ -102,9 +204,7 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
             self.rules["metric_agg_type"],
             self.rules["metric_agg_key"],
             round(match["spike_count"], 2),
-            pretty_ts(
-                match[self.rules["timestamp_field"]], self.rules.get("use_local_time")
-            ),
+            pretty_ts(match[self.ts_field], self.rules.get("use_local_time")),
         )
         message += "Preceding that time, there was a {0} of {1} of ({2}) within {3}\n\n".format(
             self.rules["metric_agg_type"],
@@ -113,6 +213,3 @@ class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
             self.rules["timeframe"],
         )
         return message
-
-    def check_matches(self, timestamp, query_key, aggregation_data):
-        raise NotImplementedError
