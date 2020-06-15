@@ -584,9 +584,9 @@ class ElasticsearchAggregationQuery(ElasticsearchQuery):
 
         return {endtime: payload}
 
-      
+
 class ElasticsearchMaasAggregationQuery(ElasticsearchAggregationQuery):
-    """Elasticsearch aggregation query for spike metric aggregation rules"""
+    """Elasticsearch aggregation query for maas aggregation rules"""
 
     def set_starttime(self, endtime) -> datetime:
         if self.rule_config["type"].previous_endtime:
@@ -649,6 +649,7 @@ class ElasticsearchMaasAggregationQuery(ElasticsearchAggregationQuery):
                         }
                     )
         return super().get_hits(starttime, endtime)
+
 
 class ElasticsearchSpikeCountQuery(ElasticsearchCountQuery):
     """Elasticsearch count query for spike rules"""
