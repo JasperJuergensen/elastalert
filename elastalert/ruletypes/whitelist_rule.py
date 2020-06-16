@@ -16,3 +16,6 @@ class WhitelistRule(CompareRule):
         if term is None:
             return not self.rules["ignore_null"]
         return term not in self.rules["whitelist"]
+
+    def garbage_collect(self, timestamp):
+        pass

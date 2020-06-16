@@ -1,3 +1,4 @@
+# flake8: noqa
 from elastalert.ruletypes.ruletype import RuleType
 from elastalert.ruletypes.any_rule import AnyRule
 from elastalert.ruletypes.blacklist_rule import BlacklistRule
@@ -13,3 +14,5 @@ from elastalert.ruletypes.spike_metric_aggregation_rule import (
 )
 from elastalert.ruletypes.spike_rule import SpikeRule
 from elastalert.ruletypes.whitelist_rule import WhitelistRule
+from elastalert.ruletypes.maas_rule import MaasRule
+from elastalert.ruletypes.maas_aggregation_rule import MaasAggregationRule

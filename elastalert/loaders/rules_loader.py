@@ -66,6 +66,8 @@ class RulesLoader(metaclass=ABCMeta):
         "metric_aggregation": ruletypes.MetricAggregationRule,
         "percentage_match": ruletypes.PercentageMatchRule,
         "spike_aggregation": ruletypes.SpikeMetricAggregationRule,
+        "maas": ruletypes.MaasRule,
+        "maas_aggregation": ruletypes.MaasAggregationRule,
     }
 
     # Used to map names of alerts to their classes
@@ -270,6 +272,9 @@ class RulesLoader(metaclass=ABCMeta):
         rule_config.setdefault("alert_text_type", self.base_config.alert_text_type)
         rule_config.setdefault("buffer_time", self.base_config.buffer_time)
         rule_config.setdefault("run_every", self.base_config.run_every)
+        rule_config.setdefault(
+            "max_scrolling_count", self.base_config.max_scrolling_count
+        )
 
         rule_config.setdefault("name", rule_name)
         rule_config.setdefault("realert", datetime.timedelta(seconds=0))
@@ -382,8 +387,6 @@ class RulesLoader(metaclass=ABCMeta):
             include.append(rule_config["compare_key"])
         if "compound_compare_key" in rule_config:
             include += rule_config["compound_compare_key"]
-        if "top_count_keys" in rule_config:
-            include += rule_config["top_count_keys"]
         include.append(rule_config["timestamp_field"])
         rule_config["include"] = list(set(include))
 

@@ -22,7 +22,7 @@ from elastalert.utils.time import (
     ts_to_dt,
     unix_to_dt,
 )
-from elastalert.utils.util import EAException, elasticsearch_client, ts_now
+from elastalert.utils.util import get_index, ts_now
 from elasticsearch.exceptions import ConnectionError, ElasticsearchException
 
 START_TIMESTAMP = "2014-09-26T12:34:45Z"
@@ -64,7 +64,10 @@ def generate_hits(timestamps, **kwargs):
 
 
 def assert_alerts(ea_inst, calls):
-    """ Takes a list of lists of timestamps. Asserts that an alert was called for each list, containing those timestamps. """
+    """
+    Takes a list of lists of timestamps.
+    Asserts that an alert was called for each list, containing those timestamps.
+    """
     assert ea_inst.rules["testrule"]["alert"][0].alert.call_count == len(calls)
     for call_num, call_args in enumerate(
         ea_inst.rules["testrule"]["alert"][0].alert.call_args_list
@@ -320,8 +323,6 @@ def run_rule_query_exception(ea, caplog):
         assert "Error running rule" in caplog.text
 
     # Assert neither add_data nor garbage_collect were called
-    # and that starttime did not change
-    assert rule.get("starttime") == START
     assert rule["type"].add_data.call_count == 0
     assert rule["type"].garbage_collect.call_count == 0
     assert rule["type"].add_count_data.call_count == 0
@@ -928,6 +929,7 @@ def test_count(ea):
     _set_hits(ea.rule_es, [])
 
     with mock.patch.object(ElasticsearchCountQuery, "get_hits") as mock_hits:
+        mock_hits.return_value = []
         ea.rules["testrule"]["type"].run_rule(END)
 
     # Assert that es.count is run against every run_every timeframe between
@@ -953,8 +955,9 @@ def test_count(ea):
             }
         }
     }
-    while END - start > ea.run_every:
-        end = start + ea.run_every
+    run_every = config.CFG().run_every
+    while END - start > run_every:
+        end = start + run_every
         query["query"]["filtered"]["filter"]["bool"]["must"][0]["range"]["@timestamp"][
             "lte"
         ] = dt_to_ts(end)
@@ -962,7 +965,7 @@ def test_count(ea):
             "gt"
         ] = dt_to_ts(start)
         mock_hits.assert_any_call(start, end)
-        start = start + ea.run_every
+        start = start + run_every
 
 
 # TODO test get_segment_size directly as it makes more sense
@@ -1272,63 +1275,19 @@ def test_strf_index(ea):
     # Test formatting with times
     start = ts_to_dt("2015-01-02T12:34:45Z")
     end = ts_to_dt("2015-01-02T16:15:14Z")
-    assert ea.get_index(ea.rules["testrule"], start, end) == "logstash-2015.01.02"
+    assert get_index(ea.rules["testrule"], start, end) == "logstash-2015.01.02"
     end = ts_to_dt("2015-01-03T01:02:03Z")
-    assert set(ea.get_index(ea.rules["testrule"], start, end).split(",")) == {
+    assert set(get_index(ea.rules["testrule"], start, end).split(",")) == {
         "logstash-2015.01.02",
         "logstash-2015.01.03",
     }
 
     # Test formatting for wildcard
-    assert ea.get_index(ea.rules["testrule"]) == "logstash-*"
+    assert get_index(ea.rules["testrule"]) == "logstash-*"
     ea.rules["testrule"]["index"] = "logstash-%Y.%m"
-    assert ea.get_index(ea.rules["testrule"]) == "logstash-*"
+    assert get_index(ea.rules["testrule"]) == "logstash-*"
     ea.rules["testrule"]["index"] = "logstash-%Y.%m-stuff"
-    assert ea.get_index(ea.rules["testrule"]) == "logstash-*-stuff"
-
-
-def test_count_keys(ea):
-    ea.rules["testrule"]["timeframe"] = datetime.timedelta(minutes=60)
-    ea.rules["testrule"]["top_count_keys"] = ["this", "that"]
-    ea.rules["testrule"]["type"].matches = {"@timestamp": END}
-    ea.rules["testrule"]["doc_type"] = "blah"
-    buckets = [
-        {
-            "aggregations": {
-                "filtered": {
-                    "counts": {
-                        "buckets": [
-                            {"key": "a", "doc_count": 10},
-                            {"key": "b", "doc_count": 5},
-                        ]
-                    }
-                }
-            }
-        },
-        {
-            "aggregations": {
-                "filtered": {
-                    "counts": {
-                        "buckets": [
-                            {"key": "d", "doc_count": 10},
-                            {"key": "c", "doc_count": 12},
-                        ]
-                    }
-                }
-            }
-        },
-    ]
-    ea.thread_data.current_es.deprecated_search.side_effect = buckets
-    counts = ea.get_top_counts(ea.rules["testrule"], START, END, ["this", "that"])
-    calls = ea.thread_data.current_es.deprecated_search.call_args_list
-    assert calls[0][1]["search_type"] == "count"
-    assert calls[0][1]["body"]["aggs"]["filtered"]["aggs"]["counts"]["terms"] == {
-        "field": "this",
-        "size": 5,
-        "min_doc_count": 1,
-    }
-    assert counts["top_events_this"] == {"a": 10, "b": 5}
-    assert counts["top_events_that"] == {"d": 10, "c": 12}
+    assert get_index(ea.rules["testrule"]) == "logstash-*-stuff"
 
 
 def test_exponential_realert(ea):
@@ -1358,9 +1317,12 @@ def test_exponential_realert(ea):
     results = (1, 0, 2, 1, 4, 0, 0, 9, 12)
     next_res = iter(results)
     for args in test_values:
-        ea.silence_cache[ea.rules["testrule"]["name"]] = (args[1], args[2])
-        next_alert, exponent = ea.next_alert_time(
-            ea.rules["testrule"], ea.rules["testrule"]["name"], args[0]
+        ea.rules["testrule"]["type"].silence_cache[ea.rules["testrule"]["name"]] = (
+            args[1],
+            args[2],
+        )
+        next_alert, exponent = ea.rules["testrule"]["type"].next_alert_time(
+            ea.rules["testrule"]["name"], args[0]
         )
         assert exponent == next(next_res)
 
@@ -1385,49 +1347,49 @@ def test_wait_until_responsive(ea):
     sleep.mock_calls == [mock.call(1.0)]
 
 
-def test_wait_until_responsive_timeout_es_not_available(ea, capsys):
+def test_wait_until_responsive_timeout_es_not_available(ea, caplog):
+
     """Bail out if ElasticSearch doesn't (quickly) become responsive."""
 
     # Never becomes responsive :-)
-    ea.es.ping.return_value = False
-    ea.es.indices.exists.return_value = False
+    ea.writeback_es.ping.return_value = False
+    ea.writeback_es.indices.exists.return_value = False
 
     clock = mock.MagicMock()
     clock.side_effect = [0.0, 1.0, 2.0, 3.0]
     timeout = datetime.timedelta(seconds=2.5)
     with mock.patch("time.sleep") as sleep:
         with pytest.raises(SystemExit) as exc:
-            ea.wait_until_responsive(timeout=timeout, clock=clock)
+            with caplog.at_level(logging.ERROR):
+                ea.wait_until_responsive(timeout=timeout, clock=clock)
+                assert 'Could not reach ElasticSearch at "es:14900".' in caplog.text
         assert exc.value.code == 1
 
     # Ensure we get useful diagnostics.
-    output, errors = capsys.readouterr()
-    assert 'Could not reach ElasticSearch at "es:14900".' in errors
 
     # Slept until we passed the deadline.
     sleep.mock_calls == [mock.call(1.0), mock.call(1.0), mock.call(1.0)]
 
 
-def test_wait_until_responsive_timeout_index_does_not_exist(ea, capsys):
+def test_wait_until_responsive_timeout_index_does_not_exist(ea, caplog):
     """Bail out if ElasticSearch doesn't (quickly) become responsive."""
 
     # Never becomes responsive :-)
-    ea.es.ping.return_value = True
-    ea.es.indices.exists.return_value = False
+    ea.writeback_es.ping.return_value = True
+    ea.writeback_es.indices.exists.return_value = False
 
     clock = mock.MagicMock()
     clock.side_effect = [0.0, 1.0, 2.0, 3.0]
     timeout = datetime.timedelta(seconds=2.5)
     with mock.patch("time.sleep") as sleep:
         with pytest.raises(SystemExit) as exc:
-            ea.wait_until_responsive(timeout=timeout, clock=clock)
+            with caplog.at_level(logging.ERROR):
+                ea.wait_until_responsive(timeout=timeout, clock=clock)
         assert exc.value.code == 1
 
-    # Ensure we get useful diagnostics.
-    output, errors = capsys.readouterr()
     assert (
         'Writeback alias "wb_a" does not exist, did you run `elastalert-create-index`?'
-        in errors
+        in caplog.text
     )
 
     # Slept until we passed the deadline.
@@ -1446,10 +1408,12 @@ def test_stop(ea):
             assert ea.running
             yield
         ea.stop()
+        yield
 
     with mock.patch.object(ea, "sleep_for", return_value=None):
         with mock.patch.object(ea, "sleep_for") as mock_run:
             mock_run.side_effect = mock_loop()
+            ea.starttime = None
             start_thread = threading.Thread(target=ea.start)
             # Set as daemon to prevent a failed test from blocking exit
             start_thread.daemon = True
@@ -1457,7 +1421,6 @@ def test_stop(ea):
 
             # Give it a few seconds to run the loop
             start_thread.join(5)
-
             assert not ea.running
             assert not start_thread.is_alive()
             assert mock_run.call_count == 4
@@ -1536,18 +1499,6 @@ def test_uncaught_exceptions(ea, monkeypatch):
         "exception": e,
         "rule": ea.disabled_rules["testrule"],
     }
-
-
-def test_get_top_counts_handles_no_hits_returned(ea):
-    ea.get_hits_terms.return_value = None
-
-    rule = ea.rules["testrule"]
-    starttime = datetime.datetime.now() - datetime.timedelta(minutes=10)
-    endtime = datetime.datetime.now()
-    keys = ["foo"]
-
-    all_counts = ea.get_top_counts(rule, starttime, endtime, keys)
-    assert all_counts == {"top_events_foo": {}}
 
 
 def test_remove_old_events(ea):

@@ -34,17 +34,10 @@ class mock_rule:
 
 
 def test_basic_match_string(ea):
-    ea.rules["testrule"]["top_count_keys"] = ["username"]
-    match = {
-        "@timestamp": "1918-01-17",
-        "field": "value",
-        "top_events_username": {"bob": 10, "mallory": 5},
-    }
+    match = {"@timestamp": "1918-01-17", "field": "value"}
     alert_text = str(BasicMatchString(ea.rules["testrule"], match))
     assert "testrule" in alert_text
     assert "some stuff happened" in alert_text
-    assert "username" in alert_text
-    assert "bob: 10" in alert_text
     assert "field: value" in alert_text
 
     # Non serializable objects don't cause errors
@@ -73,14 +66,12 @@ def test_basic_match_string(ea):
     alert_text = str(BasicMatchString(ea.rules["testrule"], match))
     assert "custom text" in alert_text
     assert "some stuff happened" not in alert_text
-    assert "username" not in alert_text
     assert "field: value" not in alert_text
 
     ea.rules["testrule"]["alert_text_type"] = "exclude_fields"
     alert_text = str(BasicMatchString(ea.rules["testrule"], match))
     assert "custom text" in alert_text
     assert "some stuff happened" in alert_text
-    assert "username" in alert_text
     assert "field: value" not in alert_text
 
 
@@ -1366,14 +1357,14 @@ def test_ms_teams():
         "alert_subject": "Cool subject",
         "alert": [],
     }
-    config._cfg = conf = config.Config(
+    config._cfg = config.Config(
         **{
             "rules_folder": "test",
             "run_every": {"minutes": 10},
             "buffer_time": {"minutes": 10},
             "scan_subdirectories": False,
             "es_client": config.ESClient(
-                **{"es_host": "elasticsearch.test", "es_port": 12345,}
+                **{"es_host": "elasticsearch.test", "es_port": 12345}
             ),
             "writeback_index": "test_index",
             "writeback_alias": "test_alias",
@@ -2219,7 +2210,8 @@ def test_pagerduty_alerter_custom_alert_subject_with_args():
         "client": "ponies inc.",
         "description": "Stinky kittens",
         "details": {
-            "information": "Test PD Rule\n\n@timestamp: 2017-01-01T00:00:00\nsomefield: Stinky\nsomeotherfield: foobarbaz\n"
+            "information": "Test PD Rule\n\n@timestamp: 2017-01-01T00:00:00\n"
+            "somefield: Stinky\nsomeotherfield: foobarbaz\n"
         },
         "event_type": "trigger",
         "incident_key": "custom foobarbaz",
@@ -2261,7 +2253,8 @@ def test_pagerduty_alerter_custom_alert_subject_with_args_specifying_trigger():
         "client": "ponies inc.",
         "description": "Stinkiest kittens",
         "details": {
-            "information": "Test PD Rule\n\n@timestamp: 2017-01-01T00:00:00\nsomefield: Stinkiest\nsomeotherfield: foobarbaz\n"
+            "information": "Test PD Rule\n\n@timestamp: 2017-01-01T00:00:00\n"
+            "somefield: Stinkiest\nsomeotherfield: foobarbaz\n"
         },
         "event_type": "trigger",
         "incident_key": "custom foobarbaz",

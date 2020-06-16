@@ -42,6 +42,11 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(skip_elasticsearch)
 
 
+@pytest.fixture
+def cls_monkeypatch(request, monkeypatch):
+    request.cls.monkeypatch = monkeypatch
+
+
 @pytest.fixture(scope="function", autouse=True)
 def reset_loggers():
     """Prevent logging handlers from capturing temporary file handles.
@@ -136,6 +141,7 @@ def configured(monkeypatch):
     test_args.debug = False
     test_args.es_debug_trace = None
     test_args.silence = False
+    test_args.timeout = 0
 
     _conf = {
         "args": test_args,
@@ -173,6 +179,8 @@ def ea():
     test_args.debug = False
     test_args.es_debug_trace = None
     test_args.silence = False
+    test_args.timeout = datetime.timedelta(seconds=0)
+    test_args.end = None
 
     _conf = {
         "args": test_args,

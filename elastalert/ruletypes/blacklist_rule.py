@@ -14,3 +14,6 @@ class BlacklistRule(CompareRule):
     def compare(self, event):
         term = lookup_es_key(event, self.rules["compare_key"])
         return term in self.rules["blacklist"]
+
+    def garbage_collect(self, timestamp):
+        pass

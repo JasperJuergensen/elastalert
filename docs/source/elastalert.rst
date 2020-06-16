@@ -105,6 +105,11 @@ This way, logs can be back filled up to a certain extent and ElastAlert will sti
 may be overridden by individual rules. This option is ignored for rules where ``use_count_query`` or ``use_terms_query``
 is set to true. Note that back filled data may not always trigger count based alerts as if it was queried in real time.
 
+Elasticsearch Client
+--------------------
+
+``es_client``: A configuration container which includes the es_* settings which are described below. It includes configuration for the communication with elasticsearch. It is an optional setting for the rules, if configured in the main configuration file. Rule settings take precedence over main configuration file settings.
+
 ``es_host``: The host name of the Elasticsearch cluster where ElastAlert records metadata about its searches.
 When ElastAlert is started, it will query for information about the time that it was last run. This way,
 even if ElastAlert is stopped and restarted, it will never miss data or look at the same events twice. It will also specify the default cluster for each rule to run on.
@@ -132,6 +137,9 @@ The environment variable ``ES_USE_SSL`` will override this field.
 ``es_send_get_body_as``: Optional; Method for querying Elasticsearch - ``GET``, ``POST`` or ``source``. The default is ``GET``
 
 ``es_conn_timeout``: Optional; sets timeout for connecting to and reading from ``es_host``; defaults to ``20``.
+
+Rules settings
+--------------
 
 ``rules_loader``: Optional; sets the loader class to be used by ElastAlert to retrieve rules and hashes.
 Defaults to ``FileRulesLoader`` if not set.
@@ -171,6 +179,9 @@ will upload a traceback message to ``elastalert_metadata`` and if ``notify_email
 rule will no longer be run until either ElastAlert restarts or the rule file has been modified. This defaults to True.
 
 ``show_disabled_rules``: If true, ElastAlert show the disable rules' list when finishes the execution. This defaults to True.
+
+Other Settings
+--------------
 
 ``notify_email``: An email address, or list of email addresses, to which notification emails will be sent. Currently,
 only an uncaught exception will send a notification email. The from address, SMTP host, and reply-to header can be set

@@ -110,8 +110,7 @@ class SpikeMetricAggregationRule(RuleType):
                 # reset the query key to consider the proper depth for N > 2
                 del qk[-1]
                 continue
-
-            qk_str = ",".join(qk)
+            qk_str = ", ".join([str(value) for value in qk])
             agg_value = term_data[self.metric_key]["value"]
             ref_agg_value = term_data.get(self.metric_ref_key, {}).get(
                 self.data_field, agg_value

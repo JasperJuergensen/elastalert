@@ -45,6 +45,31 @@ definitions:
       args: *arrayOfString
       short: {type: boolean}
 
+  maas: &maas
+    type: object
+    required: [endpoint, type, columns_mapping]
+    properties:
+      endpoint: {type: string}
+      type: {type: string}
+      filter: {type: string}
+      filter_condition: {type: string}
+      filter_value: {type: number}
+      columns_mapping:  {type: array, items: {
+        type: object, required: [name, map_to],
+        properties: {
+          name: {type: string}, map_to: {type: string}, function: {type: string}}
+      }}
+
+  maas_agg: &maas_agg
+    type: object
+    required: [endpoint, type]
+    properties:
+      endpoint: {type: string}
+      type: {type: string}
+      filter: {type: string}
+      filter_condition: {type: string}
+      filter_value: {type: number}
+
 required: [type, index, alert]
 type: object
 
@@ -200,6 +225,19 @@ oneOf:
     properties:
       type: {enum: [percentage_match]}
 
+  - title: Model as a Service
+    required: [maas]
+    properties:
+      type: {enum: [maas]}
+      maas: *maas
+
+  - title: Model as a Service Aggregation
+    required: [maas]
+    properties:
+      type: {enum: [maas_aggregation]}
+      maas: *maas_agg
+
+
   - title: Custom Rule from Module
     properties:
       # custom rules include a period in the rule type
@@ -239,6 +277,7 @@ properties:
     additionalProperties: false
     properties:
         download_dashboard: {type: string}
+
 
   include: {type: array, items: {type: string}}
   top_count_keys: {type: array, items: {type: string}}
@@ -359,7 +398,7 @@ properties:
   pagerduty_client_name: {type: string}
   pagerduty_event_type: {enum: [none, trigger, resolve, acknowledge]}
 
-### PagerTree
+  ### PagerTree
   pagertree_integration_url: {type: string}
 
 

@@ -70,3 +70,6 @@ class ChangeRule(CompareRule):
         super(ChangeRule, self).add_match(
             dict(list(match.items()) + list(extra.items()))
         )
+
+    def garbage_collect(self, timestamp):
+        pass

@@ -4,6 +4,7 @@ import unittest
 
 import mock
 import pytest
+import requests
 from elastalert.ruletypes import (
     AnyRule,
     BlacklistRule,
@@ -11,6 +12,8 @@ from elastalert.ruletypes import (
     ChangeRule,
     FlatlineRule,
     FrequencyRule,
+    MaasAggregationRule,
+    MaasRule,
     MetricAggregationRule,
     NewTermsRule,
     SpikeMetricAggregationRule,
@@ -338,13 +341,600 @@ class TermsTest(unittest.TestCase):
         assert rule.matches[1]["missing_field"] == ("d", "e.f")
 
 
-@pytest.mark.usefixtures("configured")
+@pytest.mark.usefixtures("configured", "cls_monkeypatch")
 class RuleTest(unittest.TestCase):
     def test_any(self):
         event = hits(1)
         rule = AnyRule({})
         rule.add_data([event])
         assert rule.matches == [event]
+
+    def test_maas(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1']"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_multiple_hits(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1', '1', '1']"
+
+            return MockResponse()
+
+        events = hits(3, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_multiple_hits_partial_anomaly(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1', '0', '1']"
+
+            return MockResponse()
+
+        events = hits(3, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == [events[0], events[2]]
+
+    def test_maas_gt(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1']"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": 0,
+                "filter_condition": "greater",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_lt(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['-1.0']"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": 0,
+                "filter_condition": "lower",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_le_equals(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['-1.0']"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": -1,
+                "filter_condition": "lower_equals",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_le_lower(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['-2.0']"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": -1,
+                "filter_condition": "lower_equals",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_le_bigger(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"[1.0]"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": -1,
+                "filter_condition": "lower_equals",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == []
+
+    def test_maas_ge_smaller(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"[-10.0]"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": -1,
+                "filter_condition": "greater_equals",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == []
+
+    def test_maas_ge_equals(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['-1.0']"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": -1,
+                "filter_condition": "greater_equals",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_ge_greater(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['0.0']"
+
+            return MockResponse()
+
+        events = hits(1, x="0")
+        rule_config = {
+            "maas": {
+                "endpoint": "http://localhost",
+                "columns_mapping": [{"name": "x", "map_to": "y"}],
+                "filter_value": -1,
+                "filter_condition": "greater_equals",
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasRule(rule_config)
+        rule.add_data(events)
+        assert rule.matches == events
+
+    def test_maas_agg_interval_buckets(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1.0', '1.0', '1.0', '1.0']"
+
+            return MockResponse()
+
+        rule_config = {
+            "bucket_interval": {"seconds": 10},
+            "bucket_interval_timedelta": datetime.timedelta(seconds=10),
+            "buffer_time": datetime.timedelta(minutes=1),
+            "query_key": "foo",
+            "maas": {
+                "endpoint": "http://localhost",
+                "filter_value": 1.0,
+                "filter_condition": "equals",
+            },
+        }
+
+        timestamp = datetime.datetime.now()
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {
+                            "key": "1",
+                            "interval_aggs": {
+                                "buckets": [
+                                    {"key_as_string": timestamp, "doc_count": 2},
+                                    {
+                                        "key_as_string": timestamp
+                                        + datetime.timedelta(seconds=10),
+                                        "doc_count": 3,
+                                    },
+                                ]
+                            },
+                        },
+                        {
+                            "key": "2",
+                            "interval_aggs": {
+                                "buckets": [
+                                    {"key_as_string": timestamp, "doc_count": 1},
+                                    {
+                                        "key_as_string": timestamp
+                                        + datetime.timedelta(seconds=10),
+                                        "doc_count": 4,
+                                    },
+                                ]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasAggregationRule(rule_config)
+        rule.add_aggregation_data(payload)
+        assert rule.matches == [
+            {"@timestamp": timestamp, "count": 2, "foo": "1"},
+            {
+                "@timestamp": timestamp + datetime.timedelta(seconds=10),
+                "count": 3,
+                "foo": "1",
+            },
+            {"@timestamp": timestamp, "count": 1, "foo": "2"},
+            {
+                "@timestamp": timestamp + datetime.timedelta(seconds=10),
+                "count": 4,
+                "foo": "2",
+            },
+        ]
+
+    def test_maas_agg_interval_simple(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1.0']"
+
+            return MockResponse()
+
+        rule_config = {
+            "bucket_interval": {"seconds": 10},
+            "bucket_interval_timedelta": datetime.timedelta(seconds=10),
+            "buffer_time": datetime.timedelta(minutes=1),
+            "maas": {
+                "endpoint": "http://localhost",
+                "filter_value": 1.0,
+                "filter_condition": "equals",
+            },
+        }
+
+        timestamp = datetime.datetime.now()
+        interval_agg = create_bucket_aggregation(
+            "interval_aggs", [{"key_as_string": timestamp, "doc_count": 10}]
+        )
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasAggregationRule(rule_config)
+        rule.add_aggregation_data({"2014-01-01T00:00:00Z": interval_agg})
+        assert rule.matches == [{"@timestamp": timestamp, "count": 10}]
+
+    def test_maas_agg_interval_buckets_filtered(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1.0', '1.0', '0.0', '1.0']"
+
+            return MockResponse()
+
+        rule_config = {
+            "bucket_interval": {"seconds": 10},
+            "bucket_interval_timedelta": datetime.timedelta(seconds=10),
+            "buffer_time": datetime.timedelta(minutes=1),
+            "query_key": "foo",
+            "maas": {
+                "endpoint": "http://localhost",
+                "filter_value": 1.0,
+                "filter_condition": "equals",
+            },
+        }
+
+        timestamp = datetime.datetime.now()
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {
+                            "key": "1",
+                            "interval_aggs": {
+                                "buckets": [
+                                    {"key_as_string": timestamp, "doc_count": 2},
+                                    {
+                                        "key_as_string": timestamp
+                                        + datetime.timedelta(seconds=10),
+                                        "doc_count": 3,
+                                    },
+                                ]
+                            },
+                        },
+                        {
+                            "key": "2",
+                            "interval_aggs": {
+                                "buckets": [
+                                    {"key_as_string": timestamp, "doc_count": 1},
+                                    {
+                                        "key_as_string": timestamp
+                                        + datetime.timedelta(seconds=10),
+                                        "doc_count": 4,
+                                    },
+                                ]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasAggregationRule(rule_config)
+        rule.add_aggregation_data(payload)
+        assert rule.matches == [
+            {"@timestamp": timestamp, "count": 2, "foo": "1"},
+            {
+                "@timestamp": timestamp + datetime.timedelta(seconds=10),
+                "count": 3,
+                "foo": "1",
+            },
+            {
+                "@timestamp": timestamp + datetime.timedelta(seconds=10),
+                "count": 4,
+                "foo": "2",
+            },
+        ]
+
+    def test_maas_agg_interval_buckets_metric(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1.0', '1.0', '1.0', '1.0']"
+
+            return MockResponse()
+
+        rule_config = {
+            "bucket_interval": {"seconds": 10},
+            "bucket_interval_timedelta": datetime.timedelta(seconds=10),
+            "buffer_time": datetime.timedelta(minutes=1),
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "query_key": "foo",
+            "maas": {
+                "endpoint": "http://localhost",
+                "filter_value": 1.0,
+                "filter_condition": "equals",
+            },
+        }
+
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+
+        timestamp = datetime.datetime.now()
+        payload = {
+            "2014-09-26T00:00:00": {
+                "bucket_aggs": {
+                    "buckets": [
+                        {
+                            "key": "1",
+                            "interval_aggs": {
+                                "buckets": [
+                                    {
+                                        "key_as_string": timestamp,
+                                        "doc_count": 2,
+                                        metric_key: {"value": 3},
+                                    },
+                                    {
+                                        "key_as_string": timestamp
+                                        + datetime.timedelta(seconds=10),
+                                        "doc_count": 3,
+                                        metric_key: {"value": 2},
+                                    },
+                                ]
+                            },
+                        },
+                        {
+                            "key": "2",
+                            "interval_aggs": {
+                                "buckets": [
+                                    {
+                                        "key_as_string": timestamp,
+                                        "doc_count": 1,
+                                        metric_key: {"value": 1},
+                                    },
+                                    {
+                                        "key_as_string": timestamp
+                                        + datetime.timedelta(seconds=10),
+                                        "doc_count": 4,
+                                        metric_key: {"value": 5},
+                                    },
+                                ]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasAggregationRule(rule_config)
+        rule.add_aggregation_data(payload)
+        assert rule.matches == [
+            {"@timestamp": timestamp, "count": 3, "foo": "1"},
+            {
+                "@timestamp": timestamp + datetime.timedelta(seconds=10),
+                "count": 2,
+                "foo": "1",
+            },
+            {"@timestamp": timestamp, "count": 1, "foo": "2"},
+            {
+                "@timestamp": timestamp + datetime.timedelta(seconds=10),
+                "count": 5,
+                "foo": "2",
+            },
+        ]
+
+    def test_maas_agg_buckets_filtered(self):
+        def mock_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.ok = True
+                    self.content = b"['1.0', '0.0']"
+
+            return MockResponse()
+
+        rule_config = {
+            "bucket_interval": {"seconds": 10},
+            "bucket_interval_timedelta": datetime.timedelta(seconds=10),
+            "buffer_time": datetime.timedelta(minutes=1),
+            "query_key": "foo",
+            "metric_agg_key": "key",
+            "metric_agg_type": "avg",
+            "maas": {
+                "endpoint": "http://localhost",
+                "filter_value": 1.0,
+                "filter_condition": "equals",
+            },
+        }
+        metric_key = "metric_{}_{}".format(
+            rule_config["metric_agg_key"], rule_config["metric_agg_type"]
+        )
+
+        timestamp = datetime.datetime.now()
+        payload = {
+            timestamp: {
+                "bucket_aggs": {
+                    "buckets": [
+                        {"key": "bar", metric_key: {"value": 20}},
+                        {"key": "baz", metric_key: {"value": 40}},
+                    ]
+                }
+            }
+        }
+
+        self.monkeypatch.setattr(requests, "post", mock_post)
+
+        rule = MaasAggregationRule(rule_config)
+        rule.add_aggregation_data(payload)
+        assert rule.matches == [{"@timestamp": timestamp, "count": 20, "foo": "bar"}]
 
     def test_freq(self):
         events = hits(60, timestamp_field="blah", username="qlo")

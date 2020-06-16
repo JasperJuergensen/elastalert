@@ -47,7 +47,8 @@ class JiraAlerter(Alerter):
 
     # Some built-in jira types that can be used as custom fields require special handling
     # Here is a sample of one of them:
-    # {"id":"customfield_12807","name":"My Custom Field","custom":true,"orderable":true,"navigable":true,"searchable":true,
+    # {"id":"customfield_12807","name":"My Custom Field","custom":true,"orderable":true,
+    # "navigable":true,"searchable":true,
     # "clauseNames":["cf[12807]","My Custom Field"],"schema":{"type":"array","items":"string",
     # "custom":"com.atlassian.jira.plugin.system.customfieldtypes:multiselect","customId":12807}}
     # There are likely others that will need to be updated on a case-by-case basis
@@ -379,9 +380,9 @@ class JiraAlerter(Alerter):
                             "Error while commenting on ticket %s: %s" % (ticket, e)
                         )
                     if self.labels:
-                        for l in self.labels:
+                        for lbl in self.labels:
                             try:
-                                ticket.fields.labels.append(l)
+                                ticket.fields.labels.append(lbl)
                             except JIRAError as e:
                                 log.exception(
                                     "Error while appending labels to ticket %s: %s"
@@ -418,9 +419,8 @@ class JiraAlerter(Alerter):
                         # Re-raise the exception, preserve the stack-trace, and give some
                         # context as to which watcher failed to be added
                         raise Exception(
-                            "Exception encountered when trying to add '{0}' as a watcher. Does the user exist?\n{1}".format(
-                                watcher, ex
-                            )
+                            "Exception encountered when trying to add '{0}' as a watcher. "
+                            "Does the user exist?\n{1}".format(watcher, ex)
                         ).with_traceback(sys.exc_info()[2])
 
         except JIRAError as e:

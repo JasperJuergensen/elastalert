@@ -60,21 +60,6 @@ class BasicMatchString:
     def _add_rule_text(self):
         self.text += self.rule["type"].get_match_str(self.match)
 
-    def _add_top_counts(self):
-        for key, counts in list(self.match.items()):
-            if key.startswith("top_events_"):
-                self.text += "%s:\n" % (key[11:])
-                top_events = list(counts.items())
-
-                if not top_events:
-                    self.text += "No events found.\n"
-                else:
-                    top_events.sort(key=lambda x: x[1], reverse=True)
-                    for term, count in top_events:
-                        self.text += "%s: %s\n" % (term, count)
-
-                self.text += "\n"
-
     def _add_match_items(self):
         match_items = list(self.match.items())
         match_items.sort(key=lambda x: x[0])
@@ -117,8 +102,6 @@ class BasicMatchString:
         if self.rule.get("alert_text_type") != "alert_text_only":
             self._add_rule_text()
             self._ensure_new_line()
-            if self.rule.get("top_count_keys"):
-                self._add_top_counts()
             if self.rule.get("alert_text_type") != "exclude_fields":
                 if "related_events" in self.match:
                     related_events = self.match["related_events"]

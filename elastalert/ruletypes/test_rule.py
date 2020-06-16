@@ -151,14 +151,6 @@ class MockElastAlerter(object):
                         file=sys.stderr,
                     )
 
-        for term in conf.get("top_count_keys", []):
-            # If the index starts with 'logstash', fields with .raw will be available but won't in _source
-            if term not in terms and not (
-                term.endswith(".raw")
-                and term[:-4] in terms
-                and index.startswith("logstash")
-            ):
-                print("top_count_key %s may be missing" % (term), file=sys.stderr)
         if not args.formatted_output:
             print("")  # Newline
 
@@ -357,7 +349,8 @@ class MockElastAlerter(object):
                     self.formatted_output["writeback"] = {}
                 else:
                     print(
-                        "\nWould have written the following documents to writeback index (default is elastalert_status):\n"
+                        "\nWould have written the following documents to writeback index "
+                        "(default is elastalert_status):\n"
                     )
 
                 errors = False
@@ -376,7 +369,8 @@ class MockElastAlerter(object):
 
     def run_rule_test(self):
         """
-        Uses args to run the various components of MockElastAlerter such as loading the file, saving data, loading data, and running.
+        Uses args to run the various components of MockElastAlerter such as loading the file,
+        saving data, loading data, and running.
         """
         parser = argparse.ArgumentParser(description="Validate a rule configuration")
         parser.add_argument(

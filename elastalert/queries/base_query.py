@@ -35,6 +35,7 @@ class BaseQuery(metaclass=ABCMeta):
             starttime = self.rule_config["initial_starttime"]
         else:
             starttime = self.set_starttime(endtime)
+        original_starttime = starttime
         cumulative_hits = 0
         segment_size = self.get_segment_size()
         tmp_endtime = starttime
@@ -45,7 +46,7 @@ class BaseQuery(metaclass=ABCMeta):
             self.rule_config["type"].garbage_collect(tmp_endtime)
         cumulative_hits += self.run_query(starttime, endtime)
         self.rule_config["type"].garbage_collect(endtime)
-        return starttime, endtime, cumulative_hits
+        return original_starttime, endtime, cumulative_hits
 
     @abstractmethod
     def get_segment_size(self) -> timedelta:

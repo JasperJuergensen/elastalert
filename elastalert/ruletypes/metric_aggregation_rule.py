@@ -81,7 +81,7 @@ class MetricAggregationRule(BaseAggregationRule):
         if "bucket_aggs" in aggregation_data:
             for result in aggregation_data["bucket_aggs"]["buckets"]:
                 self.check_matches_recursive(
-                    timestamp, query_key, result, compound_keys[1:], match_data
+                    timestamp, query_key, result, compound_keys[1:], match_data.copy()
                 )
 
         else:
@@ -108,3 +108,6 @@ class MetricAggregationRule(BaseAggregationRule):
         if "min_threshold" in self.rules and metric_value < self.rules["min_threshold"]:
             return True
         return False
+
+    def garbage_collect(self, timestamp):
+        pass

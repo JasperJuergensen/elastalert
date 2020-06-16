@@ -1,0 +1,11 @@
+name: Simple LogLizer Example with clustering
+
+conda_env: conda.yaml
+
+entry_points:
+  main:
+    parameters:
+      limit-data: {type: string, default: -1}
+      model: {type: string, default: "cluster"}
+      model_config_json: {type: string, default: "{}"}
+    command: "python train.py --limit-data {limit-data} --model {model} --model_config_json {model_config_json}"
