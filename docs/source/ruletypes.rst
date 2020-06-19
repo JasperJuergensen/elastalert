@@ -399,7 +399,7 @@ query_delay
 This is useful if the data is Elasticsearch doesn't get indexed immediately. (Optional, time)
 
 raw_query_key
-^^^^^^^^^^^
+^^^^^^^^^^^^^
 
 ``raw_query_key``: This option will cause ElastAlert to use the raw ``query_key``, for querying terms data.
 For optimizing the speed a .keyword mapping should be created for each field, which is used as a ``query_key`` component.
