@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import sys
-from typing import Any
+from typing import Any, Callable
 
 import pytz
 from elastalert import config
@@ -33,7 +33,7 @@ def get_module(module_name: str):
     return module
 
 
-def new_get_event_ts(ts_field):
+def new_get_event_ts(ts_field) -> Callable:
     """ Constructs a lambda that may be called to extract the timestamp field
     from a given event.
 

@@ -16,3 +16,4 @@ from elastalert.ruletypes.spike_rule import SpikeRule
 from elastalert.ruletypes.whitelist_rule import WhitelistRule
 from elastalert.ruletypes.maas_rule import MaasRule
 from elastalert.ruletypes.maas_aggregation_rule import MaasAggregationRule
+from elastalert.ruletypes.correlation_rule import CorrelationRule

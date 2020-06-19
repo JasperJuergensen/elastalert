@@ -68,6 +68,7 @@ class RulesLoader(metaclass=ABCMeta):
         "spike_aggregation": ruletypes.SpikeMetricAggregationRule,
         "maas": ruletypes.MaasRule,
         "maas_aggregation": ruletypes.MaasAggregationRule,
+        "correlation": ruletypes.CorrelationRule,
     }
 
     # Used to map names of alerts to their classes
