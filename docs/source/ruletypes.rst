@@ -894,7 +894,7 @@ time period.
 
 This rule requires the following additional options:
 
-``spike_height``: TODO
+``spike_height``: The factor of the spike height.
 
 ``spike_type``: Alerts when value exceeds upper boundary (up), lower boundary (down) or both (both).
 
