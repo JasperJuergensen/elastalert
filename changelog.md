@@ -1,5 +1,26 @@
 # Change Log
 
+# v0.3.0
+
+### Restructure
+- Ruletypes in their own module instead of one file
+- Alerter in their own module instead of one file
+- Enhancements in their own module instead of one file
+- Loaders in their own module instead of one file
+- New global config Object instead of a dictionary
+
+### Added
+- MAAS rule
+- New metrics for spike and spike metric aggregation rule
+- Correlation rule
+- Queries
+- Rule class which covers some functionality previously the elastalerter object had
+- EARuntimeException for exceptions during the execution of a rule
+- EAConfigExceptions for exceptions raised during the configuration phase of a rule
+
+### Fixed
+- Fixed spike metric aggregation rule windows
+
 # v0.2.4
 
 ### Added
