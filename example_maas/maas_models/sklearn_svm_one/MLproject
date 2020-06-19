@@ -6,4 +6,4 @@ entry_points:
   main:
     parameters:
         limit_data: {type: string, default: None}
-    command: "python train.py {limit_data}"
+    command: "python train.py --limit_data={limit_data}"

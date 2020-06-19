@@ -11,4 +11,4 @@ dependencies:
   - scikit-learn=0.22
   - pip:
     - mlflow>=1.8
-    - /home/chris/github/elastalert/example/maas_models/loglizer/dependencies/loglizer
+    - /home/chris/github/elastalert/example_maas/maas_models/loglizer/dependencies/loglizer

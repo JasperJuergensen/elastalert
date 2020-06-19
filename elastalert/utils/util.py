@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+from typing import Any
 
 import pytz
 from elastalert import config
@@ -394,3 +395,10 @@ def enhance_filter(rule):
     log.debug(
         "Enhanced filter with {} terms: {}".format(listname, str(query_str_filter))
     )
+
+
+def replace_none_with_zero(x: Any) -> Any:
+    if x is None:
+        return 0
+    else:
+        return x

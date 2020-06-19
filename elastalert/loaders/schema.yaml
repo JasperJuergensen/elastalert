@@ -69,6 +69,7 @@ definitions:
       filter: {type: string}
       filter_condition: {type: string}
       filter_value: {type: number}
+      replace_none: {type: boolean}
 
 required: [type, index, alert]
 type: object

@@ -40,6 +40,10 @@ class MaasAggregationRule(BaseAggregationRule):
             {"name": self.ts_field, "map_to": "ds"},
             {"name": "count", "map_to": "y"},
         ]
+
+        # if count is None and replace_none=True, execute replace with zero
+        if maas_config.get("replace_none", False):
+            columns_mapping[1]["function"] = "replace_none_with_zero"
         if "query_key" in self.rule_config:
             columns_mapping.extend([{"name": self.rules["query_key"], "map_to": "key"}])
 

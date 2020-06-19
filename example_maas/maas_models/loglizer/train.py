@@ -140,7 +140,7 @@ def set_model_config(model, model_config_json):
 
 
 @click.command()
-@click.option("--limit-data", type=int)
+@click.option("--limit_data", type=int)
 @click.option("--model")
 @click.option("--model_config_json")
 def train(limit_data, model, model_config_json):

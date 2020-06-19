@@ -5,6 +5,6 @@ conda_env: conda.yaml
 entry_points:
   main:
     parameters:
-      limit-data: {type: string, default: -1}
+      limit_data: {type: string, default: -1}
       model_config_json: {type: string, default: "{}"}
-    command: "python train.py --limit-data {limit-data} --model_config_json {model_config_json}"
+    command: "python train.py --limit_data {limit_data} --model_config_json {model_config_json}"

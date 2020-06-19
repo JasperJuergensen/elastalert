@@ -138,7 +138,7 @@ def log_output(pipe, data):
 
 
 @click.command()
-@click.option("--limit-data", type=int)
+@click.option("--limit_data", type=int)
 def train(limit_data):
 
     # setup logging

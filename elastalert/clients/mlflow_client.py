@@ -5,7 +5,7 @@ from typing import List
 import requests
 from elastalert.exceptions import EAException
 from elastalert.utils.time import ts_to_dt, unix_to_dt, unixms_to_dt
-from elastalert.utils.util import get_module
+from elastalert.utils.util import get_module, replace_none_with_zero
 from pandas import DataFrame
 
 
@@ -63,7 +63,7 @@ class MaasClient(metaclass=ABCMeta):
             self.columns = [c["map_to"] for c in columns_mapping]
             self.columns_rename = {c["name"]: c["map_to"] for c in columns_mapping}
             self.columns_type = {
-                c["map_to"]: c["function"] for c in columns_mapping if c.get("type")
+                c["map_to"]: c["function"] for c in columns_mapping if c.get("function")
             }
 
     @abstractmethod
@@ -85,6 +85,7 @@ class MlflowClient(MaasClient):
         "ts_to_dt": ts_to_dt,
         "unix_to_dt": unix_to_dt,
         "unixms_to_dt": unixms_to_dt,
+        "replace_none_with_zero": replace_none_with_zero,
     }
 
     def send(self, data: List[dict]) -> MaasResponse:
